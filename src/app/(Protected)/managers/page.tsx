@@ -5,7 +5,7 @@ import { UserPlus } from "lucide-react";
 import StatCard from "@/components/statCard";
 import ManagersTable, { SalesManager } from "@/components/managerStable";
 import AddManagerModal from "@/components/addManagerModal";
-import { fetchManagers, createManager, updateManagerStatus, deleteManager } from "@/services/salesService";
+import { fetchManagers, createManager, updateManager, deleteManager } from "@/services/salesService";
 
 export default function Managers() {
     const [managers, setManagers] = useState<SalesManager[]>([]);

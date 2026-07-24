@@ -11,6 +11,13 @@ const MANAGERS_TABLE = "managers";
 const SELLERS_TABLE = "sellers";
 const CLIENTS_TABLE = "clients";
 
+// Tamanho de página usado na paginação. O Supabase/PostgREST limita a resposta
+// de um único .select() a 1000 linhas por padrão (max-rows). Sem paginação e
+// sem uma ordenação estável, consultas repetidas podem retornar subconjuntos
+// diferentes das linhas quando a tabela tem mais de 1000 registros — foi essa
+// a causa dos valores mudarem sozinhos a cada atualização da página.
+const PAGE_SIZE = 1000;
+
 function toDbRecord(record: SalesRecord) {
   return {
     supervisor_id: record.supervisorId,
@@ -114,17 +121,78 @@ export async function uploadSalesRecordsInBatches(
   }
 }
 
+// Busca TODOS os registros de vendas, paginando em blocos de PAGE_SIZE e
+// ordenando por "id" para garantir que cada página traga sempre o mesmo
+// conjunto de linhas, na mesma ordem, em qualquer atualização.
+// Isso resolve o problema de gráficos com valores diferentes a cada refresh:
+// antes, a consulta sem .range()/.order() dependia do limite implícito de
+// 1000 linhas do PostgREST e podia trazer um subconjunto diferente da tabela
+// a cada chamada quando havia mais de 1000 registros.
+export async function fetchAllSalesRecords(): Promise<SalesRecord[]> {
+  const all: any[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("*")
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      console.error("Erro ao buscar vendas:", error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) break;
+
+    all.push(...data);
+
+    if (data.length < PAGE_SIZE) break;
+    page += 1;
+  }
+
+  return all.map(fromDbRecord);
+}
+
+// Mantida por compatibilidade com outras telas que ainda filtrem por mês no
+// próprio banco. O Dashboard não usa mais esta função: ele carrega tudo com
+// fetchAllSalesRecords() uma única vez e filtra o período em memória.
 export async function fetchSalesByMonth(month: string): Promise<SalesRecord[]> {
   const [year, monthNumber] = month.split("-");
   const suffix = `%/${monthNumber}/${year}`;
 
-  const { data, error } = await supabase.from(TABLE).select("*").like("issue_date", suffix);
-  if (error) {
-    console.error("Erro ao buscar vendas do mês:", error);
-    throw error;
+  const all: any[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("*")
+      .like("issue_date", suffix)
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      console.error("Erro ao buscar vendas do mês:", error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) break;
+
+    all.push(...data);
+
+    if (data.length < PAGE_SIZE) break;
+    page += 1;
   }
 
-  return (data ?? []).map(fromDbRecord);
+  return all.map(fromDbRecord);
 }
 
 export async function saveUploadHistory(historyData: {

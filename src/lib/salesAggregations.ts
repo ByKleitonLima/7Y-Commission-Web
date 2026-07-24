@@ -21,6 +21,12 @@ const getNumber = (val: any) => {
   return isNaN(num) ? 0 : num;
 };
 
+const formatCurrency = (v: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+const formatNumber = (v: number) =>
+  v.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
 // Parser de data robusto: aceita Date, ISO ("AAAA-MM-DD") e o formato
 // salvo pelo importador ("DD/MM/AAAA"). Retorna null se não conseguir interpretar.
 function parseFlexibleDate(value: any): Date | null {
@@ -68,6 +74,28 @@ export function extractSupplier(r: any): string {
   return String(getProp(r, ["supplier", "fornecedor"]) || "Sem Fornecedor");
 }
 
+// Data real do registro (usada pelo filtro de período e pela evolução diária)
+export function extractDate(r: any): Date | null {
+  const raw = getProp(r, [
+    "issueDate",
+    "issue_date",
+    "date",
+    "data",
+    "dataPedido",
+    "emissao",
+    "createdAt",
+  ]);
+  return parseFlexibleDate(raw);
+}
+
+// Identificador de pedido: usa o número único da planilha; se não existir,
+// cai para uma combinação de campos que aproxima um pedido único.
+function getOrderKey(r: any): string {
+  const unique = getProp(r, ["uniqueNumber", "unique_number", "orderRef", "order_ref"]);
+  if (unique) return String(unique);
+  return `${getProp(r, ["productCode", "product_code"]) || ""}-${getProp(r, ["issueDate", "issue_date"]) || ""}-${getProp(r, ["totalValue", "total_value"]) || ""}`;
+}
+
 // Lista de produtos existentes nos registros, para popular o filtro de mercadoria.
 export function getSortedProducts(records: any[]): string[] {
   const set = new Set<string>();
@@ -100,61 +128,150 @@ export function getSortedGroups(records: any[]): string[] {
   return Array.from(groups).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
-// 1. Gerentes (Agrupamento por Faturamento - Valor)
+// Filtra os registros por um período (formato DD/MM/AAAA em ambas as pontas).
+// Se as datas não forem válidas, retorna os registros sem filtrar (falha segura).
+export function filterByDateRange(records: any[], fromStr: string, toStr: string): any[] {
+  const from = parseFlexibleDate(fromStr);
+  const to = parseFlexibleDate(toStr);
+  if (!from || !to) return records;
+
+  const fromTime = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const toTime = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999).getTime();
+
+  return records.filter((r) => {
+    const d = extractDate(r);
+    if (!d) return false;
+    const t = d.getTime();
+    return t >= fromTime && t <= toTime;
+  });
+}
+
+// 1. Gerentes (Agrupamento por Faturamento - Valor), com fardos, pedidos e % para o tooltip.
 export function getTopManagers(records: any[]) {
-  const map: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const fardosMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   records.forEach((r) => {
     const manager = getProp(r, ["managerName", "gerente", "manager", "manager_name"]) || "Sem Gerente";
     const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
-    map[manager] = (map[manager] || 0) + value;
+    const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
+
+    revenueMap[manager] = (revenueMap[manager] || 0) + value;
+    fardosMap[manager] = (fardosMap[manager] || 0) + fardos;
+    if (!orderSets[manager]) orderSets[manager] = new Set();
+    orderSets[manager].add(getOrderKey(r));
   });
 
-  return Object.entries(map)
-    .map(([name, revenue]) => ({
-      name,
-      value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(revenue),
-      rawRevenue: revenue,
-    }))
+  const totalRevenue = Object.values(revenueMap).reduce((a, b) => a + b, 0);
+
+  return Object.entries(revenueMap)
+    .map(([name, revenue]) => {
+      const fardos = fardosMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
+      return {
+        name,
+        value: formatCurrency(revenue),
+        subtitle: `${formatNumber(fardos)} fardos`,
+        rawRevenue: revenue,
+        details: [
+          { label: "Faturamento total", value: formatCurrency(revenue) },
+          { label: "Fardos vendidos", value: `${formatNumber(fardos)} un.` },
+          { label: "Pedidos", value: `${orders}` },
+          { label: "% do faturamento geral", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawRevenue - a.rawRevenue)
     .slice(0, 5)
     .map((item, index) => ({ ...item, position: index + 1 }));
 }
 
-// 2. Vendedores (Agrupamento por Quantidade)
+// 2. Vendedores (Agrupamento por Quantidade), com faturamento, fardos, pedidos e % para o tooltip.
 export function getTopSellers(records: any[]) {
-  const map: Record<string, number> = {};
+  const volumeMap: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const fardosMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   records.forEach((r) => {
     const seller = getProp(r, ["sellerName", "vendedor", "seller", "seller_name"]) || "Sem Vendedor";
     const quantity = getNumber(getProp(r, ["quantity", "quantidade", "qtd"]));
-    map[seller] = (map[seller] || 0) + quantity;
+    const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
+    const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
+
+    volumeMap[seller] = (volumeMap[seller] || 0) + quantity;
+    revenueMap[seller] = (revenueMap[seller] || 0) + value;
+    fardosMap[seller] = (fardosMap[seller] || 0) + fardos;
+    if (!orderSets[seller]) orderSets[seller] = new Set();
+    orderSets[seller].add(getOrderKey(r));
   });
 
-  return Object.entries(map)
-    .map(([name, volume]) => ({
-      name,
-      value: `${volume} un.`,
-      rawVolume: volume,
-    }))
+  const totalVolume = Object.values(volumeMap).reduce((a, b) => a + b, 0);
+
+  return Object.entries(volumeMap)
+    .map(([name, volume]) => {
+      const revenue = revenueMap[name] || 0;
+      const fardos = fardosMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalVolume > 0 ? (volume / totalVolume) * 100 : 0;
+      return {
+        name,
+        value: `${formatNumber(volume)} un.`,
+        subtitle: formatCurrency(revenue),
+        rawVolume: volume,
+        details: [
+          { label: "Volume vendido", value: `${formatNumber(volume)} un.` },
+          { label: "Faturamento", value: formatCurrency(revenue) },
+          { label: "Fardos", value: `${formatNumber(fardos)} un.` },
+          { label: "Pedidos", value: `${orders}` },
+          { label: "% do volume geral", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawVolume - a.rawVolume)
     .slice(0, 5)
     .map((item, index) => ({ ...item, position: index + 1 }));
 }
 
-// 3. Produtos Campeões de Vendas (Soma estrita de Fardos / bundleQuantity)
+// 3. Produtos Campeões de Vendas (Soma estrita de Fardos / bundleQuantity), com faturamento e pedidos.
 export function getTopProducts(records: any[]) {
-  const map: Record<string, number> = {};
+  const fardosMap: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   records.forEach((r) => {
     const product = extractProduct(r);
     const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
-    map[product] = (map[product] || 0) + fardos;
+    const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
+
+    fardosMap[product] = (fardosMap[product] || 0) + fardos;
+    revenueMap[product] = (revenueMap[product] || 0) + value;
+    if (!orderSets[product]) orderSets[product] = new Set();
+    orderSets[product].add(getOrderKey(r));
   });
 
-  return Object.entries(map)
-    .map(([name, fardos]) => ({
-      name,
-      value: `${fardos} Fardos`,
-      rawFardos: fardos,
-    }))
+  const totalFardos = Object.values(fardosMap).reduce((a, b) => a + b, 0);
+
+  return Object.entries(fardosMap)
+    .map(([name, fardos]) => {
+      const revenue = revenueMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalFardos > 0 ? (fardos / totalFardos) * 100 : 0;
+      return {
+        name,
+        value: `${formatNumber(fardos)} Fardos`,
+        subtitle: formatCurrency(revenue),
+        rawFardos: fardos,
+        details: [
+          { label: "Fardos vendidos", value: `${formatNumber(fardos)} un.` },
+          { label: "Faturamento", value: formatCurrency(revenue) },
+          { label: "Pedidos", value: `${orders}` },
+          { label: "% do total de fardos", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawFardos - a.rawFardos)
     .slice(0, 5)
     .map((item, index) => ({ ...item, position: index + 1 }));
@@ -169,85 +286,113 @@ export function getTopProductsByGroup(records: any[], groupName: string) {
     return g.trim().toLowerCase() === groupName.trim().toLowerCase();
   });
 
-  const map: Record<string, number> = {};
+  const fardosMap: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   filtered.forEach((r) => {
     const product = extractProduct(r);
     const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
-    map[product] = (map[product] || 0) + fardos;
+    const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
+
+    fardosMap[product] = (fardosMap[product] || 0) + fardos;
+    revenueMap[product] = (revenueMap[product] || 0) + value;
+    if (!orderSets[product]) orderSets[product] = new Set();
+    orderSets[product].add(getOrderKey(r));
   });
 
-  return Object.entries(map)
-    .map(([name, fardos]) => ({
-      name,
-      value: `${fardos} Fardos`,
-      rawFardos: fardos,
-    }))
+  const totalFardos = Object.values(fardosMap).reduce((a, b) => a + b, 0);
+
+  return Object.entries(fardosMap)
+    .map(([name, fardos]) => {
+      const revenue = revenueMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalFardos > 0 ? (fardos / totalFardos) * 100 : 0;
+      return {
+        name,
+        value: `${formatNumber(fardos)} Fardos`,
+        subtitle: formatCurrency(revenue),
+        rawFardos: fardos,
+        details: [
+          { label: "Fardos vendidos", value: `${formatNumber(fardos)} un.` },
+          { label: "Faturamento", value: formatCurrency(revenue) },
+          { label: "Pedidos", value: `${orders}` },
+          { label: "% dentro do grupo", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawFardos - a.rawFardos)
     .slice(0, 3)
     .map((item, index) => ({ ...item, position: index + 1 }));
 }
 
-// 5. Evolução Diária dentro do mês selecionado (Agrupamento por Dia e Produto somando Quantidade)
-//
-// Importante: como os registros que chegam aqui já vêm filtrados para UM único mês
-// (via fetchSalesByMonth), agrupar por "mês" sempre resultaria em uma única barra.
-// Por isso agrupamos por DIA, o que gera a evolução real dentro do período escolhido.
-export function getMonthlySalesByProduct(records: any[]) {
-  const productTotals: Record<string, number> = {};
-  records.forEach((r) => {
-    const product = extractProduct(r);
-    const quantity = getNumber(getProp(r, ["quantity", "quantidade", "qtd"]));
-    productTotals[product] = (productTotals[product] || 0) + quantity;
-  });
+// 5. Evolução diária por produto, dentro do período selecionado (De/Até).
+// Diferente da versão anterior, NÃO limita a top 5 + "Outros": todos os produtos
+// existentes no período aparecem. O filtro de quais produtos exibir fica a cargo
+// do próprio componente do gráfico (seleção único/vários/todos).
+function generateColor(index: number, total: number): string {
+  const hue = Math.round((index * 360) / Math.max(total, 1));
+  return `hsl(${hue}, 65%, 48%)`;
+}
 
-  const topProducts = Object.entries(productTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map((p) => p[0]);
+export function getFullProductEvolution(records: any[], fromStr?: string, toStr?: string) {
+  const productSet = new Set<string>();
+  records.forEach((r) => productSet.add(extractProduct(r)));
+  const products = Array.from(productSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const from = fromStr ? parseFlexibleDate(fromStr) : null;
+  const to = toStr ? parseFlexibleDate(toStr) : null;
+
+  // Monta a lista contínua de dias do período (ex: 01/04, 02/04 ... 30/04),
+  // mesmo que não haja vendas em algum dia (fica com valor 0).
+  const dayKeys: string[] = [];
+  const dayLabels: Record<string, string> = {};
+
+  if (from && to) {
+    const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+    while (cursor.getTime() <= end.getTime()) {
+      const dd = String(cursor.getDate()).padStart(2, "0");
+      const mm = String(cursor.getMonth() + 1).padStart(2, "0");
+      const key = `${cursor.getFullYear()}-${mm}-${dd}`;
+      dayKeys.push(key);
+      dayLabels[key] = `${dd}/${mm}`;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
 
   const dailyData: Record<string, Record<string, number>> = {};
-  const dayOrder: Record<string, number> = {};
-  const productSet = new Set<string>(topProducts);
-
-  records.forEach((r) => {
-    const rawDate = getProp(r, ["date", "data", "createdAt", "dataPedido", "emissao", "issueDate", "issue_date"]);
-    const parsed = parseFlexibleDate(rawDate);
-
-    let dayLabel = "Sem Data";
-    let sortKey = Number.MAX_SAFE_INTEGER;
-
-    if (parsed) {
-      const dd = String(parsed.getDate()).padStart(2, "0");
-      const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-      dayLabel = `${dd}/${mm}`;
-      sortKey = parsed.getTime();
-    }
-
-    dayOrder[dayLabel] = sortKey;
-
-    let product = extractProduct(r);
-    if (!topProducts.includes(product)) {
-      productSet.add("Outros");
-      product = "Outros";
-    }
-
-    const quantity = getNumber(getProp(r, ["quantity", "quantidade", "qtd"]));
-
-    if (!dailyData[dayLabel]) dailyData[dayLabel] = {};
-    dailyData[dayLabel][product] = (dailyData[dayLabel][product] || 0) + quantity;
+  dayKeys.forEach((key) => {
+    dailyData[key] = {};
+    products.forEach((p) => (dailyData[key][p] = 0));
   });
 
-  const data = Object.keys(dailyData)
-    .sort((a, b) => dayOrder[a] - dayOrder[b])
-    .map((day) => ({ month: day, ...dailyData[day] }));
+  records.forEach((r) => {
+    const parsed = extractDate(r);
+    if (!parsed) return;
 
-  const colors = ["#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
-  const products = Array.from(productSet).map((prod, i) => ({
-    key: prod,
-    color: prod === "Outros" ? "#94a3b8" : colors[i % colors.length],
-  }));
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const key = `${parsed.getFullYear()}-${mm}-${dd}`;
 
-  return { data, products };
+    if (!dailyData[key]) {
+      dailyData[key] = {};
+      products.forEach((p) => (dailyData[key][p] = 0));
+      dayKeys.push(key);
+      dayLabels[key] = `${dd}/${mm}`;
+    }
+
+    const product = extractProduct(r);
+    const quantity = getNumber(getProp(r, ["quantity", "quantidade", "qtd"]));
+    dailyData[key][product] = (dailyData[key][product] || 0) + quantity;
+  });
+
+  const sortedKeys = Array.from(new Set(dayKeys)).sort((a, b) => (a > b ? 1 : a < b ? -1 : 0));
+
+  const data = sortedKeys.map((key) => ({ day: dayLabels[key] || key, ...dailyData[key] }));
+  const colors = products.map((p, i) => ({ key: p, color: generateColor(i, products.length) }));
+
+  return { data, products: colors };
 }
 
 // Como todos os pedidos são dentro do estado de São Paulo, agrupamos qualquer
@@ -262,68 +407,110 @@ function normalizeRegionLabel(region: string): string {
   return "Outras Regiões";
 }
 
-// 6.1 Vendas por Região (Agrupamento por Divisão/Região somando Faturamento)
+// 6.1 Vendas por Região (Agrupamento por Divisão/Região somando Faturamento), com fardos e pedidos.
 export function getTopRegions(records: any[]) {
-  const value: Record<string, number> = {};
-  const orders: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const fardosMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   records.forEach((r) => {
     const region = normalizeRegionLabel(extractRegion(r));
-    const v = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
-    value[region] = (value[region] || 0) + v;
-    orders[region] = (orders[region] || 0) + 1;
+    const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
+    const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
+
+    revenueMap[region] = (revenueMap[region] || 0) + value;
+    fardosMap[region] = (fardosMap[region] || 0) + fardos;
+    if (!orderSets[region]) orderSets[region] = new Set();
+    orderSets[region].add(getOrderKey(r));
   });
 
-  return Object.entries(value)
-    .map(([name, revenue]) => ({
-      name,
-      subtitle: `${(orders[name] || 0).toLocaleString("pt-BR")} pedidos`,
-      value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(revenue),
-      rawRevenue: revenue,
-    }))
+  const totalRevenue = Object.values(revenueMap).reduce((a, b) => a + b, 0);
+
+  return Object.entries(revenueMap)
+    .map(([name, revenue]) => {
+      const fardos = fardosMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
+      return {
+        name,
+        subtitle: `${orders.toLocaleString("pt-BR")} pedidos`,
+        value: formatCurrency(revenue),
+        rawRevenue: revenue,
+        details: [
+          { label: "Faturamento", value: formatCurrency(revenue) },
+          { label: "Fardos vendidos", value: `${formatNumber(fardos)} un.` },
+          { label: "Pedidos", value: `${orders}` },
+          { label: "% do faturamento geral", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawRevenue - a.rawRevenue)
     .slice(0, 8)
     .map((item, index) => ({ ...item, position: index + 1 }));
 }
 
-// 6.2 Vendas por Fornecedor (Agrupamento por Fornecedor somando Fardos)
+// 6.2 Vendas por Fornecedor (Agrupamento por Fornecedor somando Fardos), com faturamento e pedidos.
 export function getTopSuppliers(records: any[]) {
   const fardosMap: Record<string, number> = {};
-  const orders: Record<string, number> = {};
+  const revenueMap: Record<string, number> = {};
+  const orderSets: Record<string, Set<string>> = {};
+
   records.forEach((r) => {
     const supplier = extractSupplier(r);
     const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
+    const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
+
     fardosMap[supplier] = (fardosMap[supplier] || 0) + fardos;
-    orders[supplier] = (orders[supplier] || 0) + 1;
+    revenueMap[supplier] = (revenueMap[supplier] || 0) + value;
+    if (!orderSets[supplier]) orderSets[supplier] = new Set();
+    orderSets[supplier].add(getOrderKey(r));
   });
 
+  const totalFardos = Object.values(fardosMap).reduce((a, b) => a + b, 0);
+
   return Object.entries(fardosMap)
-    .map(([name, fardos]) => ({
-      name,
-      subtitle: `${(orders[name] || 0).toLocaleString("pt-BR")} pedidos`,
-      value: `${fardos.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} Fardos`,
-      rawFardos: fardos,
-    }))
+    .map(([name, fardos]) => {
+      const revenue = revenueMap[name] || 0;
+      const orders = orderSets[name]?.size || 0;
+      const percent = totalFardos > 0 ? (fardos / totalFardos) * 100 : 0;
+      return {
+        name,
+        subtitle: `${orders.toLocaleString("pt-BR")} pedidos`,
+        value: `${formatNumber(fardos)} Fardos`,
+        rawFardos: fardos,
+        details: [
+          { label: "Fardos vendidos", value: `${formatNumber(fardos)} un.` },
+          { label: "Faturamento", value: formatCurrency(revenue) },
+          { label: "Pedidos com este fornecedor", value: `${orders}` },
+          { label: "% do total de fardos", value: `${percent.toFixed(1)}%` },
+        ],
+      };
+    })
     .sort((a, b) => b.rawFardos - a.rawFardos)
     .slice(0, 8)
     .map((item, index) => ({ ...item, position: index + 1 }));
 }
 
-// 7. Comparativo entre Grupos (Agrupamento por Grupo somando Valor)
+// 7. Comparativo entre Grupos (Agrupamento por Grupo somando Valor e Fardos)
 export function getGroupSalesComparison(records: any[]) {
-  const groupData: Record<string, number> = {};
+  const groupValue: Record<string, number> = {};
+  const groupFardos: Record<string, number> = {};
 
   records.forEach((r) => {
     const group = extractGroup(r);
     const value = getNumber(getProp(r, ["totalValue", "valorTotal", "value", "valor", "total", "total_value"]));
-    groupData[group] = (groupData[group] || 0) + value;
+    const fardos = getNumber(getProp(r, ["bundleQuantity", "bundle_quantity", "fardos", "fardo", "volumes"]));
+    groupValue[group] = (groupValue[group] || 0) + value;
+    groupFardos[group] = (groupFardos[group] || 0) + fardos;
   });
 
   const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b", "#334155"];
-  return Object.entries(groupData)
+  return Object.entries(groupValue)
     .sort((a, b) => b[1] - a[1])
     .map(([name, value], i) => ({
       name,
       value,
+      fardos: groupFardos[name] || 0,
       color: colors[i % colors.length],
     }));
 }

@@ -5,12 +5,40 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recha
 export interface GroupSalesData {
     name: string;
     value: number;
+    fardos?: number;
     color: string;
 }
 
 interface GroupSalesPieChartProps {
     title: string;
     data: GroupSalesData[];
+}
+
+function CustomTooltip({ active, payload, data }: any) {
+    if (!active || !payload || !payload.length) return null;
+
+    const entry = payload[0];
+    const total = data.reduce((sum: number, d: GroupSalesData) => sum + (Number(d.value) || 0), 0);
+    const pct = total > 0 ? ((Number(entry.value) / total) * 100).toFixed(1) : "0";
+    const fardos = entry.payload?.fardos ?? 0;
+
+    return (
+        <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg">
+            <p className="mb-1 font-semibold text-[#2d2d2d]">{entry.name}</p>
+            <p className="mb-0.5 text-gray-500">
+                Faturamento:{" "}
+                <span className="font-medium text-[#2d2d2d]">
+                    {Number(entry.value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+            </p>
+            <p className="mb-0.5 text-gray-500">
+                Fardos: <span className="font-medium text-[#2d2d2d]">{Number(fardos).toLocaleString("pt-BR")}</span>
+            </p>
+            <p className="text-gray-500">
+                Participação: <span className="font-medium text-[#2d2d2d]">{pct}%</span>
+            </p>
+        </div>
+    );
 }
 
 export default function GroupSalesPieChart({ title, data }: GroupSalesPieChartProps) {
@@ -38,21 +66,7 @@ export default function GroupSalesPieChart({ title, data }: GroupSalesPieChartPr
                                     <Cell key={entry.name} fill={entry.color} />
                                 ))}
                             </Pie>
-                            <Tooltip
-                                contentStyle={{
-                                    borderRadius: 8,
-                                    border: "1px solid #e5e7eb",
-                                    fontSize: 12,
-                                }}
-                                formatter={(value: number, name: string) => {
-                                    const total = data.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
-                                    const pct = total > 0 ? ((Number(value) / total) * 100).toFixed(1) : "0";
-                                    return [
-                                        `${Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (${pct}%)`,
-                                        name,
-                                    ];
-                                }}
-                            />
+                            <Tooltip content={(props) => <CustomTooltip {...props} data={data} />} />
                             <Legend wrapperStyle={{ fontSize: 12 }} />
                         </PieChart>
                     </ResponsiveContainer>
