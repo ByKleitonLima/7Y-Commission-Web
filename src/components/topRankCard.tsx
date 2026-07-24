@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 
 export interface RankingDetail {
     label: string;
@@ -21,7 +21,7 @@ interface TopRankingCardProps {
     items: RankingItem[];
 }
 
-export default function TopRankingCard({ title, items }: TopRankingCardProps) {
+function TopRankingCard({ title, items }: TopRankingCardProps) {
     const [hovered, setHovered] = useState<number | null>(null);
 
     return (
@@ -91,3 +91,5 @@ export default function TopRankingCard({ title, items }: TopRankingCardProps) {
         </div>
     );
 }
+
+export default memo(TopRankingCard);

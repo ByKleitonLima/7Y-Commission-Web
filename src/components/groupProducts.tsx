@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 export interface GroupSalesData {
@@ -41,7 +42,7 @@ function CustomTooltip({ active, payload, data }: any) {
     );
 }
 
-export default function GroupSalesPieChart({ title, data }: GroupSalesPieChartProps) {
+function GroupSalesPieChart({ title, data }: GroupSalesPieChartProps) {
     return (
         <div className="mt-8 min-w-0 flex-1">
             <h2 className="border-b border-gray-200 pb-2 text-base font-semibold text-[#2d2d2d]">
@@ -75,3 +76,5 @@ export default function GroupSalesPieChart({ title, data }: GroupSalesPieChartPr
         </div>
     );
 }
+
+export default memo(GroupSalesPieChart);
