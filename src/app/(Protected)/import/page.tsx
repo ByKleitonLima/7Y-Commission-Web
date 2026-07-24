@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, ChangeEvent, useEffect } from "react";
-import { Upload, FileSpreadsheet, CheckCircle2, Database, History, User, Calendar } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, Database, History, User, Calendar, Trash2, Loader2 } from "lucide-react";
 import { useSalesData } from "@/context/salesDataContext";
 import { parseSalesFile } from "@/lib/parseSalesFile";
 import {
@@ -9,23 +9,61 @@ import {
     saveUploadHistory,
     fetchUploadHistory,
     syncOrganizationFromRecords,
+    deleteUploadHistoryEntry,
 } from "@/services/salesService";
 import UploadLoader from "@/components/uploadLoader";
 import { useAuth } from "@/context/AuthContext";
 import TopRankingCard from "@/components/topRankCard";
-import { getTopManagers, getTopSellers, getTopProducts } from "@/lib/salesAggregations";
+import { buildDashboardAggregates } from "@/lib/salesAggregations";
+import type { SalesRecord } from "@/context/salesDataContext";
+
+// ATENÇÃO: precisa bater com o mesmo valor usado em getAuthenticatedAdmin
+// (src/lib/verifyAuth.ts). Se no seu Firestore o campo "role" usa outro
+// texto (ex: "Administrador"), ajuste os dois lugares juntos.
+const ADMIN_ROLE = "Admin";
+
+// Mesma chave usada nos agregados (orgAggregations/salesAggregations):
+// NR_UNICO se existir, senão uma combinação de produto+data+valor.
+function getRecordKey(r: SalesRecord): string {
+    return (
+        r.uniqueNumber?.trim() ||
+        `${r.productCode}-${r.issueDate}-${r.totalValue}`
+    );
+}
+
+// Remove linhas duplicadas dentro do próprio arquivo importado, antes de
+// mandar qualquer coisa pro banco.
+function dedupeRecords(records: SalesRecord[]): SalesRecord[] {
+    const seen = new Set<string>();
+    const result: SalesRecord[] = [];
+
+    for (const record of records) {
+        const key = getRecordKey(record);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(record);
+    }
+
+    return result;
+}
 
 export default function ImportPage() {
-    const { user, name } = useAuth();
-    const { records, setRecords, fileName, setFileName } = useSalesData();
+    const { user, name, role } = useAuth();
+    const isAdmin = role === ADMIN_ROLE;
+
+    const { records, setRecords, fileName, setFileName, refresh } = useSalesData();
     const [isProcessing, setProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [duplicatesRemoved, setDuplicatesRemoved] = useState(0);
 
     const [isSaving, setSaving] = useState(false);
     const [saveProgress, setSaveProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
     const [isSuccess, setIsSuccess] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [history, setHistory] = useState<any[]>([]);
+
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
 
     const userDisplayName = name || user?.email?.split("@")[0] || "Usuário";
 
@@ -50,18 +88,16 @@ export default function ImportPage() {
         const uniqueSellers = new Set(records.map((r) => r.sellerName)).size;
         const uniqueClients = new Set(records.map((r) => r.clientName)).size;
 
-        const topManagers = getTopManagers(records).slice(0, 3);
-        const topSellers = getTopSellers(records).slice(0, 3);
-        const topProducts = getTopProducts(records).slice(0, 3);
+        const aggregates = buildDashboardAggregates(records);
 
         return {
             totalValue,
             uniqueManagers,
             uniqueSellers,
             uniqueClients,
-            topManagers,
-            topSellers,
-            topProducts
+            topManagers: aggregates.topManagers.slice(0, 3),
+            topSellers: aggregates.topSellers.slice(0, 3),
+            topProducts: aggregates.topProducts.slice(0, 3),
         };
     }, [records]);
 
@@ -74,10 +110,14 @@ export default function ImportPage() {
         setIsSuccess(false);
         setSaveError(null);
         setSaveProgress({ done: 0, total: 0 });
+        setDuplicatesRemoved(0);
 
         try {
             const parsed = await parseSalesFile(file);
-            setRecords(parsed);
+            const deduped = dedupeRecords(parsed);
+
+            setDuplicatesRemoved(parsed.length - deduped.length);
+            setRecords(deduped);
             setFileName(file.name);
         } catch (err) {
             console.error(err);
@@ -96,21 +136,34 @@ export default function ImportPage() {
         setSaveProgress({ done: 0, total: records.length });
 
         try {
-            await uploadSalesRecordsInBatches(records, (sent, total) => {
+            const totalValue = records.reduce((sum, r) => sum + r.totalValue, 0);
+
+            // Cria o registro de histórico ANTES de enviar as vendas, porque
+            // precisamos do id gerado para marcar cada sales_record com
+            // upload_id — é esse vínculo que permite excluir a importação
+            // inteira depois (ver botão de lixeira na tabela de histórico).
+            const historyEntry = await saveUploadHistory({
+                fileName,
+                rowCount: records.length,
+                uploadedBy: userDisplayName,
+                totalValue,
+            });
+
+            if (!historyEntry) {
+                throw new Error(
+                    "Não foi possível registrar o histórico da importação. Verifique se a tabela 'upload_history' existe."
+                );
+            }
+
+            // uploadSalesRecordsInBatches faz upsert por unique_number, então
+            // reenviar linhas já existentes atualiza em vez de duplicar.
+            await uploadSalesRecordsInBatches(records, historyEntry.id, (sent, total) => {
                 setSaveProgress({ done: sent, total });
             });
 
             // Deriva e sincroniza gerentes / vendedores / clientes a partir
-            // dos registros dessa importação (pedidos contam somente
-            // "pedido de venda", devolução e bonificação ficam de fora).
+            // dos registros dessa importação.
             await syncOrganizationFromRecords(records);
-
-            await saveUploadHistory({
-                fileName,
-                rowCount: records.length,
-                uploadedBy: userDisplayName,
-                totalValue: records.reduce((sum, r) => sum + r.totalValue, 0)
-            });
 
             setIsSuccess(true);
             await loadHistory();
@@ -126,6 +179,35 @@ export default function ImportPage() {
             setSaveError(err.message || "Não foi possível salvar no banco de dados. Tente novamente.");
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleDeleteUpload = async (item: { id: string; fileName: string }) => {
+        if (!isAdmin) return;
+
+        const confirmed = window.confirm(
+            `Tem certeza que deseja excluir a importação "${item.fileName}"?\n\n` +
+            "Isso vai apagar PERMANENTEMENTE todas as vendas que vieram desse envio, " +
+            "em todos os Dashboards. Essa ação não pode ser desfeita."
+        );
+        if (!confirmed) return;
+
+        setDeletingId(item.id);
+        setDeleteError(null);
+
+        try {
+            await deleteUploadHistoryEntry(item.id);
+            await loadHistory();
+            // Os dados de vendas usados no Dashboard/Gerentes/Vendedores/
+            // Clientes vêm do SalesDataProvider (contexto global) — depois
+            // de excluir no banco, força recarregar pra refletir em todo o
+            // app sem precisar dar F5.
+            await refresh();
+        } catch (err: any) {
+            console.error("Erro ao excluir importação:", err);
+            setDeleteError(err.message || "Não foi possível excluir essa importação.");
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -158,6 +240,12 @@ export default function ImportPage() {
 
                 {isProcessing && (
                     <p className="mt-3 text-xs text-gray-400 animate-pulse">Extraindo dados...</p>
+                )}
+
+                {duplicatesRemoved > 0 && !isProcessing && (
+                    <p className="mt-3 text-xs text-amber-600 font-medium">
+                        {duplicatesRemoved} linha(s) duplicada(s) dentro do próprio arquivo foram ignoradas.
+                    </p>
                 )}
 
                 {error && <p className="mt-3 text-xs text-red-500 font-medium">{error}</p>}
@@ -263,6 +351,12 @@ export default function ImportPage() {
                     <h2 className="text-base font-semibold text-[#2d2d2d]">Histórico de Envios</h2>
                 </div>
 
+                {deleteError && (
+                    <div className="mb-4 text-sm font-medium text-red-600 bg-red-50 border border-red-200 p-4 rounded-xl">
+                        {deleteError}
+                    </div>
+                )}
+
                 <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                     <table className="w-full text-left text-sm">
                         <thead>
@@ -272,6 +366,7 @@ export default function ImportPage() {
                                 <th className="px-6 py-3">Registros</th>
                                 <th className="px-6 py-3">Faturamento</th>
                                 <th className="px-6 py-3">Enviado Por</th>
+                                {isAdmin && <th className="px-6 py-3">Ações</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -295,11 +390,27 @@ export default function ImportPage() {
                                             {item.uploadedBy}
                                         </span>
                                     </td>
+                                    {isAdmin && (
+                                        <td className="px-6 py-4">
+                                            <button
+                                                onClick={() => handleDeleteUpload(item)}
+                                                disabled={deletingId === item.id}
+                                                title="Excluir esta importação e as vendas vinculadas"
+                                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                            >
+                                                {deletingId === item.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                                )}
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                             {history.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
+                                    <td colSpan={isAdmin ? 6 : 5} className="px-6 py-10 text-center text-sm text-gray-400">
                                         Nenhum envio registrado até o momento.
                                     </td>
                                 </tr>

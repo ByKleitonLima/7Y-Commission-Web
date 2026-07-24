@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { authFetch } from "@/lib/apiClient";
 import { SalesRecord } from "@/context/salesDataContext";
 import { SalesManager } from "@/components/managerStable";
 import { Seller } from "@/components/sellersStable";
@@ -18,7 +19,7 @@ const CLIENTS_TABLE = "clients";
 // a causa dos valores mudarem sozinhos a cada atualização da página.
 const PAGE_SIZE = 1000;
 
-function toDbRecord(record: SalesRecord) {
+function toDbRecord(record: SalesRecord, uploadId?: string) {
   return {
     supervisor_id: record.supervisorId,
     manager_name: record.managerName,
@@ -29,7 +30,16 @@ function toDbRecord(record: SalesRecord) {
     client_code: record.clientCode,
     client_name: record.clientName,
     issue_date: record.issueDate || new Date().toLocaleDateString("pt-BR"),
-    unique_number: record.uniqueNumber ?? null,
+    // unique_number é a chave de deduplicação usada no upsert (evita
+    // duplicar ao reenviar a mesma planilha).
+    unique_number:
+      record.uniqueNumber && record.uniqueNumber.trim() !== ""
+        ? record.uniqueNumber
+        : `${record.productCode}-${record.issueDate}-${record.totalValue}`,
+    // Vincula a linha à importação que a originou. É essa coluna que
+    // permite excluir todo um envio de uma vez (ver deleteUploadHistoryEntry
+    // e a rota /api/uploads/[id]).
+    upload_id: uploadId ?? null,
     order_ref: record.orderRef ?? null,
     supplier: record.supplier,
     product_code: record.productCode,
@@ -101,19 +111,29 @@ function fromDbRecord(row: any): SalesRecord {
   };
 }
 
+// Envia os registros em blocos, fazendo UPSERT por unique_number (evita
+// duplicar ao reenviar a mesma planilha) e marcando cada linha com o
+// uploadId do histórico correspondente (permite excluir tudo depois).
+//
+// IMPORTANTE: exige a constraint UNIQUE em unique_number e a coluna
+// upload_id em sales_records — ver migration.sql.
 export async function uploadSalesRecordsInBatches(
   records: SalesRecord[],
+  uploadId: string,
   onProgress?: (sent: number, total: number) => void
 ) {
   const chunkSize = 200;
   let totalSent = 0;
 
-  const mappedRecords = records.map(toDbRecord);
+  const mappedRecords = records.map((r) => toDbRecord(r, uploadId));
 
   for (let i = 0; i < mappedRecords.length; i += chunkSize) {
     const chunk = mappedRecords.slice(i, i + chunkSize);
 
-    const { error } = await supabase.from(TABLE).insert(chunk);
+    const { error } = await supabase
+      .from(TABLE)
+      .upsert(chunk, { onConflict: "unique_number", ignoreDuplicates: false });
+
     if (error) throw error;
 
     totalSent += chunk.length;
@@ -124,10 +144,6 @@ export async function uploadSalesRecordsInBatches(
 // Busca TODOS os registros de vendas, paginando em blocos de PAGE_SIZE e
 // ordenando por "id" para garantir que cada página traga sempre o mesmo
 // conjunto de linhas, na mesma ordem, em qualquer atualização.
-// Isso resolve o problema de gráficos com valores diferentes a cada refresh:
-// antes, a consulta sem .range()/.order() dependia do limite implícito de
-// 1000 linhas do PostgREST e podia trazer um subconjunto diferente da tabela
-// a cada chamada quando havia mais de 1000 registros.
 export async function fetchAllSalesRecords(): Promise<SalesRecord[]> {
   const all: any[] = [];
   let page = 0;
@@ -159,8 +175,7 @@ export async function fetchAllSalesRecords(): Promise<SalesRecord[]> {
 }
 
 // Mantida por compatibilidade com outras telas que ainda filtrem por mês no
-// próprio banco. O Dashboard não usa mais esta função: ele carrega tudo com
-// fetchAllSalesRecords() uma única vez e filtra o período em memória.
+// próprio banco. O Dashboard não usa mais esta função.
 export async function fetchSalesByMonth(month: string): Promise<SalesRecord[]> {
   const [year, monthNumber] = month.split("-");
   const suffix = `%/${monthNumber}/${year}`;
@@ -195,30 +210,40 @@ export async function fetchSalesByMonth(month: string): Promise<SalesRecord[]> {
   return all.map(fromDbRecord);
 }
 
+// Agora retorna o registro criado (precisamos do "id" para marcar as
+// sales_records dessa importação com o upload_id correspondente).
 export async function saveUploadHistory(historyData: {
   fileName: string;
   rowCount: number;
   uploadedBy: string;
   totalValue: number;
-}) {
+}): Promise<{ id: string } | null> {
   try {
-    const { error } = await supabase.from(HISTORY_TABLE).insert([
-      {
-        file_name: historyData.fileName,
-        row_count: historyData.rowCount,
-        uploaded_by: historyData.uploadedBy,
-        total_value: historyData.totalValue,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    const { data, error } = await supabase
+      .from(HISTORY_TABLE)
+      .insert([
+        {
+          file_name: historyData.fileName,
+          row_count: historyData.rowCount,
+          uploaded_by: historyData.uploadedBy,
+          total_value: historyData.totalValue,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select("id")
+      .single();
 
     if (error) {
       console.warn(
         "Aviso: Não foi possível salvar o histórico. Verifique se a tabela 'upload_history' existe."
       );
+      return null;
     }
+
+    return { id: data.id };
   } catch (err) {
     console.error("Erro ao salvar histórico:", err);
+    return null;
   }
 }
 
@@ -241,6 +266,14 @@ export async function fetchUploadHistory() {
     totalValue: row.total_value,
     created_at: row.created_at,
   }));
+}
+
+// Exclui uma importação inteira: chama a rota /api/uploads/[id], que só
+// aceita a chamada se o usuário autenticado for Admin (checado no
+// servidor). Apagar o upload_history remove em cascata as sales_records
+// vinculadas (ver migration.sql, upload_id ON DELETE CASCADE).
+export async function deleteUploadHistoryEntry(id: string) {
+  return authFetch(`/api/uploads/${id}`, { method: "DELETE" });
 }
 
 export async function syncOrganizationFromRecords(records: SalesRecord[]) {
