@@ -1,42 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import StatCard from "@/components/statCard";
 import ClientsTable from "@/components/clientsStable";
 import AddClientModal from "@/components/addClientModal";
-import { fetchClients, createClient, updateClient, deleteClient } from "@/services/salesService";
+import RefreshButton from "@/components/refreshButton";
+import { createClient, updateClient, deleteClient } from "@/services/salesService";
+import { useOrgData } from "@/context/orgDataContext";
 
 export default function ClientesPage() {
-    const [clients, setClients] = useState<any[]>([]);
+    const { clients, isLoading, refresh } = useOrgData();
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<any | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    const loadClients = async () => {
-        setIsLoading(true);
-        try {
-            const data = await fetchClients();
-            const formattedData = (data || []).map((item: any) => ({
-                id: item.id,
-                supId: item.supervisor_id || item.supId || item.sup_id || "",
-                sellerCode: item.seller_code || item.sellerCode || "",
-                code: item.client_code || item.code || "",
-                name: item.name || "",
-                region: item.region || "",
-                status: item.status || "Ativo",
-            }));
-            setClients(formattedData);
-        } catch (err) {
-            console.error("Erro ao carregar clientes:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        loadClients();
-    }, []);
 
     const total = clients.length;
     const active = clients.filter((c) => c.status === "Ativo").length;
@@ -65,7 +41,7 @@ export default function ClientesPage() {
             } else {
                 await createClient(clientData);
             }
-            await loadClients();
+            await refresh();
         } catch (err) {
             console.error("Erro ao salvar cliente:", err);
         } finally {
@@ -76,7 +52,7 @@ export default function ClientesPage() {
     const handleDeleteClient = async (client: any) => {
         try {
             await deleteClient(client.id);
-            setClients((prev) => prev.filter((c) => c.id !== client.id));
+            await refresh();
         } catch (err) {
             console.error("Erro ao remover cliente:", err);
         }
@@ -84,7 +60,8 @@ export default function ClientesPage() {
 
     return (
         <div>
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-3">
+                <RefreshButton onRefresh={refresh} />
                 <button
                     onClick={handleOpenCreate}
                     className="flex items-center gap-2 rounded-lg bg-[#2d2d2d] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1f1f1f]"
@@ -101,7 +78,7 @@ export default function ClientesPage() {
                 <StatCard label="Sem vendedor vinculado" value={withoutSeller} />
             </div>
 
-            {isLoading ? (
+            {isLoading && clients.length === 0 ? (
                 <div className="mt-8 rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
                     Carregando clientes...
                 </div>

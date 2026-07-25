@@ -3,6 +3,7 @@
 import Sidebar from "@/components/menu";
 import { SidebarProvider, useSidebar } from "@/components/pageTile";
 import { SalesDataProvider } from "@/context/salesDataContext";
+import { OrgDataProvider } from "@/context/orgDataContext";
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
     const { expanded } = useSidebar();
@@ -28,7 +29,9 @@ export default function ProtectedLayout({
     return (
         <SidebarProvider>
             <SalesDataProvider>
-                <LayoutContent>{children}</LayoutContent>
+                <OrgDataProvider>
+                    <LayoutContent>{children}</LayoutContent>
+                </OrgDataProvider>
             </SalesDataProvider>
         </SidebarProvider>
     );

@@ -1,43 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import StatCard from "@/components/statCard";
 import ManagersTable, { SalesManager } from "@/components/managerStable";
 import AddManagerModal from "@/components/addManagerModal";
-import { fetchManagers, createManager, updateManager, deleteManager } from "@/services/salesService";
+import RefreshButton from "@/components/refreshButton";
+import { createManager, updateManager, deleteManager } from "@/services/salesService";
+import { useOrgData } from "@/context/orgDataContext";
 
 export default function Managers() {
-    const [managers, setManagers] = useState<SalesManager[]>([]);
+    const { managers, isLoading, refresh } = useOrgData();
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingManager, setEditingManager] = useState<SalesManager | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    const loadManagers = async () => {
-        setIsLoading(true);
-        try {
-            const data = await fetchManagers();
-            // Normaliza os dados vindos do Supabase para garantir compatibilidade com a tabela
-            const formattedData = (data || []).map((item: any) => ({
-                id: item.id,
-                supId: item.supervisor_id || item.supId || item.sup_id || "",
-                code: item.code || "",
-                name: item.name || "",
-                sellersCount: Number(item.sellersCount || item.sellers_count || 0),
-                ordersCount: Number(item.ordersCount || item.orders_count || 0),
-                status: item.status || "Ativo",
-            }));
-            setManagers(formattedData);
-        } catch (err) {
-            console.error("Erro ao carregar gerentes:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        loadManagers();
-    }, []);
 
     const total = managers.length;
     const linkedSellers = managers.reduce((sum, m) => sum + (Number(m.sellersCount) || 0), 0);
@@ -66,7 +41,7 @@ export default function Managers() {
             } else {
                 await createManager(managerData);
             }
-            await loadManagers();
+            await refresh();
         } catch (err) {
             console.error("Erro ao salvar gerente:", err);
         } finally {
@@ -77,7 +52,7 @@ export default function Managers() {
     const handleDeleteManager = async (manager: SalesManager) => {
         try {
             await deleteManager(manager.id);
-            setManagers((prev) => prev.filter((m) => m.id !== manager.id));
+            await refresh();
         } catch (err) {
             console.error("Erro ao remover gerente:", err);
         }
@@ -85,7 +60,8 @@ export default function Managers() {
 
     return (
         <div>
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-3">
+                <RefreshButton onRefresh={refresh} />
                 <button
                     onClick={handleOpenCreate}
                     className="flex items-center gap-2 rounded-lg bg-[#2d2d2d] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1f1f1f]"
@@ -102,7 +78,7 @@ export default function Managers() {
                 <StatCard label="Inativos" value={inactive} />
             </div>
 
-            {isLoading ? (
+            {isLoading && managers.length === 0 ? (
                 <div className="mt-8 rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
                     Carregando gerentes...
                 </div>

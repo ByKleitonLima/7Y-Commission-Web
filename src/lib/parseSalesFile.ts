@@ -26,11 +26,42 @@ function toDateString(value: unknown): string {
   return String(value ?? "");
 }
 
+// Colunas que o parser espera encontrar (já normalizadas: sem acento, sem
+// espaço duplo, maiúsculas). Usado só pra diagnóstico — se algo aqui não
+// bater com o header real da planilha, esse campo específico vai vir
+// vazio/zerado no preview e o console avisa qual é.
+const REQUIRED_KEYS = [
+  "ID_SUPERVISOR", "GERENTE", "PARCEIRO", "CODVEN", "VENDEDOR", "REDE",
+  "CODPARC", "NOMEPARC", "EMISSAO", "NR_UNICO", "REF PEDIDO", "FORNECEDOR",
+  "COD", "PRODUTO", "QTDNEG", "QTDFARD", "VLRUNIT", "VLRTOT", "% BOLETO",
+  "VLR", "% DESC_BONI", "VLR UNIT", "VLR_LIQUIDO", "TABELA", "%",
+  "COMISSAO REPR.", "DESCR.", "APLICATIVO", "DIVISAO", "PREMIO",
+  "CODGRUPO", "REGPROMO", "VLRPROMO", "GRUPO", "FAMILIA",
+];
+
 export async function parseSalesFile(file: File): Promise<SalesRecord[]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
+
+  // Diagnóstico: roda uma vez por importação, olhando só a primeira linha,
+  // pra apontar no console quais colunas esperadas não foram achadas na
+  // planilha (provável causa de campos vindo errados/vazios no preview).
+  if (rawRows.length > 0) {
+    const foundKeys = new Set(Object.keys(rawRows[0]).map(normalizeKey));
+    const missing = REQUIRED_KEYS.filter((k) => !foundKeys.has(k));
+    if (missing.length > 0) {
+      console.warn(
+        "[parseSalesFile] Colunas esperadas NÃO encontradas na planilha (esses campos virão vazios/zerados):",
+        missing
+      );
+      console.warn(
+        "[parseSalesFile] Colunas realmente encontradas na planilha:",
+        Array.from(foundKeys)
+      );
+    }
+  }
 
   return rawRows.map((row) => {
     const normalized: Record<string, unknown> = {};

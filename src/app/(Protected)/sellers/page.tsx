@@ -1,49 +1,25 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { UserPlus, Upload } from "lucide-react";
 import StatCard from "@/components/statCard";
 import SellersTable, { Seller } from "@/components/sellersStable";
 import AddSellerModal from "@/components/addSallersModal";
 import UploadLoader from "@/components/uploadLoader";
-import { fetchSellers, createSeller, updateSeller, deleteSeller } from "@/services/salesService";
+import RefreshButton from "@/components/refreshButton";
+import { createSeller, updateSeller, deleteSeller } from "@/services/salesService";
 import { supabase } from "@/lib/supabase";
 import { recomputeManagerSellersCount, recomputeSellerClientsCount } from "@/lib/importSync";
+import { useOrgData } from "@/context/orgDataContext";
 import * as XLSX from "xlsx";
 
 export default function Sellers() {
-    const [sellers, setSellers] = useState<Seller[]>([]);
+    const { sellers, isLoading, refresh } = useOrgData();
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingSeller, setEditingSeller] = useState<Seller | null>(null);
-    const [loading, setLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
     const [progress, setProgress] = useState({ sent: 0, total: 0 });
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        loadSellers();
-    }, []);
-
-    const loadSellers = async () => {
-        setLoading(true);
-        try {
-            const data = await fetchSellers();
-            const formattedData = (data || []).map((item: any) => ({
-                id: item.id,
-                supId: item.supervisor_id || item.supId || "",
-                code: item.seller_code || item.code || "",
-                name: item.name || "",
-                clientsCount: Number(item.clientsCount || item.clients_count || 0),
-                ordersCount: Number(item.ordersCount || item.orders_count || 0),
-                status: item.status || "Ativo",
-            }));
-            setSellers(formattedData);
-        } catch (err) {
-            console.error("Erro ao carregar vendedores:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const total = sellers.length;
     const active = sellers.filter((s) => s.status === "Ativo").length;
@@ -74,7 +50,7 @@ export default function Sellers() {
             }
             // Garante que o gerente vinculado reflita esse vendedor na contagem
             if (sellerData.supId) await recomputeManagerSellersCount([sellerData.supId]);
-            await loadSellers();
+            await refresh();
         } catch (err) {
             console.error("Erro ao salvar vendedor:", err);
         } finally {
@@ -85,8 +61,8 @@ export default function Sellers() {
     const handleDeleteSeller = async (seller: Seller) => {
         try {
             await deleteSeller(seller.id);
-            setSellers((prev) => prev.filter((s) => s.id !== seller.id));
             if (seller.supId) await recomputeManagerSellersCount([seller.supId]);
+            await refresh();
         } catch (err) {
             console.error("Erro ao remover vendedor:", err);
         }
@@ -222,7 +198,7 @@ export default function Sellers() {
                 await recomputeManagerSellersCount(Array.from(supervisorIdsTouched));
                 await recomputeSellerClientsCount(Array.from(sellerCodesTouched));
 
-                await loadSellers();
+                await refresh();
                 alert(`Importação concluída!\n- Vendedores cadastrados/atualizados: ${importedCount}\n- Vínculos de clientes processados: ${linkedCount}`);
             } catch (error) {
                 console.error("Erro ao processar arquivo:", error);
@@ -249,6 +225,8 @@ export default function Sellers() {
             />
 
             <div className="flex items-center justify-end gap-3">
+                <RefreshButton onRefresh={refresh} />
+
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
@@ -275,7 +253,7 @@ export default function Sellers() {
                 <StatCard label="Clientes vinculados" value={linkedClients} />
             </div>
 
-            {loading ? (
+            {isLoading && sellers.length === 0 ? (
                 <div className="mt-8 rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
                     Carregando vendedores...
                 </div>

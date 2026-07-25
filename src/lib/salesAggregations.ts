@@ -1,6 +1,7 @@
 import { SalesRecord } from "@/context/salesDataContext";
 import type { RankingItem } from "@/components/topRankCard";
 import type { GroupSalesData } from "@/components/groupProducts";
+import { isSaleOrder } from "@/lib/orgAggregations";
 
 /*
  * ATENÇÃO — reescrita para performance:
@@ -16,11 +17,20 @@ import type { GroupSalesData } from "@/components/groupProducts";
  * continuam existindo para não quebrar imports existentes, mas cada uma é
  * apenas uma fatia do resultado de buildDashboardAggregates — chame
  * buildDashboardAggregates() UMA vez em page.tsx e reuse o resultado.
+ *
+ * ATUALIZAÇÃO (correção Home):
+ * O dashboard passou a agrupar pela coluna FAMILIA da planilha (campo
+ * `family` do SalesRecord) em vez da "Mercadoria" (nome do produto). Isso
+ * afeta: filtro principal, ranking "topProducts" (mantém o nome do campo
+ * por compatibilidade com a tela de Importação, mas os itens agora
+ * representam Famílias), o agrupamento "Top 3 por Grupo" e o ranking de
+ * fornecedores. O ranking de fornecedores também ganhou detalhamento por
+ * região (qual região mais compra de cada fornecedor).
  */
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const formatCurrency = (v: number) => currency.format(v);
-const formatNumber = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+const formatCurrency = (v: number) => currency.format(v || 0);
+const formatNumber = (v: number) => (v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 
 // Cache de datas parseadas por registro (evita reparsear a mesma string
 // várias vezes em diferentes funções/rerenders do mesmo array de records).
@@ -49,46 +59,75 @@ function parseFlexibleDate(value: any): Date | null {
 }
 
 export function extractDate(r: SalesRecord): Date | null {
+  if (!r) return null;
   if (dateCache.has(r)) return dateCache.get(r)!;
   const d = parseFlexibleDate(r.issueDate);
   dateCache.set(r, d);
   return d;
 }
 
+// Mantida por compatibilidade (algumas telas ainda podem exibir o nome do
+// produto individualmente), mas o Dashboard não usa mais isso para
+// agrupar/filtrar — ver extractFamily().
 export function extractProduct(r: SalesRecord): string {
-  return r.productName || "Desconhecido";
+  return r?.productName || "Desconhecido";
+}
+
+// Chave principal de agrupamento do Dashboard (coluna FAMILIA da planilha).
+export function extractFamily(r: SalesRecord): string {
+  const f = (r?.family || "").trim();
+  return f || "Sem Família";
 }
 
 export function extractRegion(r: SalesRecord): string {
-  return r.division || "Sem Região";
+  return (r?.division || "").trim() || "Sem Região";
 }
 
 export function extractGroup(r: SalesRecord): string {
-  return r.group || r.family || "Sem Grupo";
+  return r?.group || r?.family || "Sem Grupo";
 }
 
 export function extractSupplier(r: SalesRecord): string {
-  return r.supplier || "Sem Fornecedor";
+  return r?.supplier || "Sem Fornecedor";
 }
 
 function getOrderKey(r: SalesRecord): string {
   return r.uniqueNumber || r.orderRef || `${r.productCode}-${r.issueDate}-${r.totalValue}`;
 }
 
+// Só considera pedidos de venda de fato (DESCR. = "[D] - PED. VENDA" ou
+// "PED. VENDA"). Usado pelos relatórios da Home — o restante dos
+// lançamentos (devolução, bonificação etc.) fica de fora e é usado em
+// outras telas.
+export function filterSaleOrders(records: SalesRecord[]): SalesRecord[] {
+  return (records || []).filter(isSaleOrder);
+}
+
 // ---- Listas para popular os dropdowns de filtro (De/Até já aplicado antes) ----
 
+// Mantida por compatibilidade (não usada mais no filtro principal da Home).
 export function getSortedProducts(records: SalesRecord[]): string[] {
   const set = new Set<string>();
-  for (const r of records) {
+  for (const r of records || []) {
     const p = extractProduct(r).trim();
     if (p) set.add(p);
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+// Filtro principal da Home (antes "Mercadoria", agora "Família").
+export function getSortedFamilies(records: SalesRecord[]): string[] {
+  const set = new Set<string>();
+  for (const r of records || []) {
+    const f = extractFamily(r).trim();
+    if (f && f !== "Sem Família") set.add(f);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
 export function getSortedRegions(records: SalesRecord[]): string[] {
   const set = new Set<string>();
-  for (const r of records) {
+  for (const r of records || []) {
     const g = extractRegion(r).trim();
     if (g && g !== "Sem Região") set.add(g);
   }
@@ -97,7 +136,7 @@ export function getSortedRegions(records: SalesRecord[]): string[] {
 
 export function getSortedGroups(records: SalesRecord[]): string[] {
   const set = new Set<string>();
-  for (const r of records) {
+  for (const r of records || []) {
     const g = extractGroup(r).trim();
     if (g && g !== "Sem Grupo") set.add(g);
   }
@@ -107,14 +146,15 @@ export function getSortedGroups(records: SalesRecord[]): string[] {
 // Filtra por período (De/Até em DD/MM/AAAA). Falha segura: se as datas do
 // filtro não forem válidas, retorna os registros sem filtrar.
 export function filterByDateRange(records: SalesRecord[], fromStr: string, toStr: string): SalesRecord[] {
+  const safeRecords = records || [];
   const from = parseFlexibleDate(fromStr);
   const to = parseFlexibleDate(toStr);
-  if (!from || !to) return records;
+  if (!from || !to) return safeRecords;
 
   const fromTime = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
   const toTime = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999).getTime();
 
-  return records.filter((r) => {
+  return safeRecords.filter((r) => {
     const d = extractDate(r);
     if (!d) return false;
     const t = d.getTime();
@@ -135,6 +175,19 @@ function newAcc(): Accumulator {
   return { revenue: 0, fardos: 0, volume: 0, orders: new Set() };
 }
 
+interface RegionBreakdown {
+  revenue: number;
+  fardos: number;
+}
+
+interface SupplierAccumulator extends Accumulator {
+  regions: Map<string, RegionBreakdown>;
+}
+
+function newSupplierAcc(): SupplierAccumulator {
+  return { revenue: 0, fardos: 0, volume: 0, orders: new Set(), regions: new Map() };
+}
+
 function rankFromMap(
   map: Map<string, Accumulator>,
   sortKey: "revenue" | "fardos" | "volume",
@@ -150,7 +203,7 @@ function rankFromMap(
 
 const KNOWN_SP_REGIONS = ["SAO PAULO", "SÃO PAULO", "INTERIOR", "LITORAL"];
 function normalizeRegionLabel(region: string): string {
-  const clean = region.trim().toUpperCase();
+  const clean = (region || "").trim().toUpperCase();
   if (!clean || clean === "SEM REGIÃO") return "Sem Região";
   if (KNOWN_SP_REGIONS.includes(clean)) return region.trim();
   return "Outras Regiões";
@@ -166,6 +219,8 @@ export interface DailyTotal {
 export interface DashboardAggregates {
   topManagers: RankingItem[];
   topSellers: RankingItem[];
+  // Mantido com esse nome por compatibilidade com a tela de Importação,
+  // mas os itens agora representam FAMÍLIAS (não mais "Mercadoria").
   topProducts: RankingItem[];
   productsByGroup: Record<string, RankingItem[]>;
   dailyTotals: DailyTotal[];
@@ -174,8 +229,63 @@ export interface DashboardAggregates {
   topSuppliers: RankingItem[];
 }
 
+// Monta o mapa dia -> { revenue, fardos } a partir de um conjunto de
+// registros, preenchendo com zero os dias do período sem venda (se
+// fromStr/toStr forem passados) pra o eixo do gráfico ficar contínuo.
+function buildDailyMap(
+  records: SalesRecord[],
+  fromStr?: string,
+  toStr?: string
+): DailyTotal[] {
+  const dailyMap = new Map<string, { revenue: number; fardos: number }>();
+
+  for (const r of records || []) {
+    const revenue = Number(r.totalValue) || 0;
+    const fardos = Number(r.bundleQuantity) || 0;
+    const parsedDate = extractDate(r);
+    if (parsedDate) {
+      const dateKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
+      const day = dailyMap.get(dateKey) || { revenue: 0, fardos: 0 };
+      day.revenue += revenue;
+      day.fardos += fardos;
+      dailyMap.set(dateKey, day);
+    }
+  }
+
+  const from = fromStr ? parseFlexibleDate(fromStr) : null;
+  const to = toStr ? parseFlexibleDate(toStr) : null;
+
+  if (from && to) {
+    const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+    while (cursor.getTime() <= end.getTime()) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+      if (!dailyMap.has(key)) dailyMap.set(key, { revenue: 0, fardos: 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  return Array.from(dailyMap.entries())
+    .sort((a, b) => (a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0))
+    .map(([dateKey, totals]) => {
+      const [, m, d] = dateKey.split("-");
+      return { day: `${d}/${m}`, dateKey, revenue: totals.revenue, fardos: totals.fardos };
+    });
+}
+
+// Total diário isolado (sem os rankings), usado pelo filtro de Família
+// específico do gráfico "Faturamento Total de Mercadorias" — que pode ser
+// diferente do filtro geral da página.
+export function buildDailyTotals(
+  records: SalesRecord[],
+  fromStr?: string,
+  toStr?: string
+): DailyTotal[] {
+  return buildDailyMap(records || [], fromStr, toStr);
+}
+
 // Faz UMA única varredura no array de registros já filtrado (período,
-// mercadoria, região) e monta todos os cards/gráficos da Home de uma vez.
+// família, região) e monta todos os cards/gráficos da Home de uma vez.
 // fromStr/toStr (DD/MM/AAAA) são opcionais e servem só pra preencher com
 // zero os dias do período que não tiveram venda, deixando o eixo do
 // gráfico diário contínuo (sem "buracos").
@@ -184,22 +294,25 @@ export function buildDashboardAggregates(
   fromStr?: string,
   toStr?: string
 ): DashboardAggregates {
+  const safeRecords = records || [];
+
   const managers = new Map<string, Accumulator>();
   const sellers = new Map<string, Accumulator>();
-  const products = new Map<string, Accumulator>();
+  const families = new Map<string, Accumulator>();
   const regions = new Map<string, Accumulator>();
-  const suppliers = new Map<string, Accumulator>();
+  const suppliers = new Map<string, SupplierAccumulator>();
   const groupTotals = new Map<string, { value: number; fardos: number }>();
-  // produto -> acumulador, particionado por grupo (pra Top 3 por grupo sem 2ª passagem)
-  const productsByGroupMap = new Map<string, Map<string, Accumulator>>();
-  // AAAA-MM-DD -> total do dia (faturamento + fardos), pro gráfico dia a dia
-  const dailyMap = new Map<string, { revenue: number; fardos: number }>();
+  // família -> acumulador, particionado por grupo (pra Top 3 por grupo sem 2ª passagem)
+  const familiesByGroupMap = new Map<string, Map<string, Accumulator>>();
 
-  for (const r of records) {
+  for (const r of safeRecords) {
+    if (!r) continue;
+
     const manager = r.managerName || "Sem Gerente";
     const seller = r.sellerName || "Sem Vendedor";
-    const product = extractProduct(r);
-    const region = normalizeRegionLabel(extractRegion(r));
+    const family = extractFamily(r);
+    const region = extractRegion(r);
+    const normalizedRegion = normalizeRegionLabel(region);
     const supplier = extractSupplier(r);
     const group = extractGroup(r);
 
@@ -221,45 +334,40 @@ export function buildDashboardAggregates(
     s.volume += quantity;
     s.orders.add(orderKey);
 
-    let p = products.get(product);
-    if (!p) products.set(product, (p = newAcc()));
-    p.revenue += revenue;
-    p.fardos += fardos;
-    p.orders.add(orderKey);
+    let f = families.get(family);
+    if (!f) families.set(family, (f = newAcc()));
+    f.revenue += revenue;
+    f.fardos += fardos;
+    f.orders.add(orderKey);
 
-    let rg = regions.get(region);
-    if (!rg) regions.set(region, (rg = newAcc()));
+    let rg = regions.get(normalizedRegion);
+    if (!rg) regions.set(normalizedRegion, (rg = newAcc()));
     rg.revenue += revenue;
     rg.fardos += fardos;
     rg.orders.add(orderKey);
 
     let sp = suppliers.get(supplier);
-    if (!sp) suppliers.set(supplier, (sp = newAcc()));
+    if (!sp) suppliers.set(supplier, (sp = newSupplierAcc()));
     sp.revenue += revenue;
     sp.fardos += fardos;
     sp.orders.add(orderKey);
+    const spRegion = sp.regions.get(region) || { revenue: 0, fardos: 0 };
+    spRegion.revenue += revenue;
+    spRegion.fardos += fardos;
+    sp.regions.set(region, spRegion);
 
     const gTotal = groupTotals.get(group) || { value: 0, fardos: 0 };
     gTotal.value += revenue;
     gTotal.fardos += fardos;
     groupTotals.set(group, gTotal);
 
-    let groupProducts = productsByGroupMap.get(group);
-    if (!groupProducts) productsByGroupMap.set(group, (groupProducts = new Map()));
-    let gp = groupProducts.get(product);
-    if (!gp) groupProducts.set(product, (gp = newAcc()));
-    gp.revenue += revenue;
-    gp.fardos += fardos;
-    gp.orders.add(orderKey);
-
-    const parsedDate = extractDate(r);
-    if (parsedDate) {
-      const dateKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
-      const day = dailyMap.get(dateKey) || { revenue: 0, fardos: 0 };
-      day.revenue += revenue;
-      day.fardos += fardos;
-      dailyMap.set(dateKey, day);
-    }
+    let groupFamilies = familiesByGroupMap.get(group);
+    if (!groupFamilies) familiesByGroupMap.set(group, (groupFamilies = new Map()));
+    let gf = groupFamilies.get(family);
+    if (!gf) groupFamilies.set(family, (gf = newAcc()));
+    gf.revenue += revenue;
+    gf.fardos += fardos;
+    gf.orders.add(orderKey);
   }
 
   const topManagers = rankFromMap(managers, "revenue", 5, (name, acc, total) => ({
@@ -287,7 +395,9 @@ export function buildDashboardAggregates(
     ],
   }));
 
-  const topProducts = rankFromMap(products, "fardos", 5, (name, acc, total) => ({
+  // "topProducts": mantém o nome do campo por compatibilidade, mas agora
+  // representa as FAMÍLIAS campeãs (coluna FAMILIA da planilha).
+  const topProducts = rankFromMap(families, "fardos", 5, (name, acc, total) => ({
     name,
     value: `${formatNumber(acc.fardos)} Fardos`,
     subtitle: formatCurrency(acc.revenue),
@@ -311,17 +421,42 @@ export function buildDashboardAggregates(
     ],
   }));
 
-  const topSuppliers = rankFromMap(suppliers, "fardos", 8, (name, acc, total) => ({
-    name,
-    subtitle: `${acc.orders.size.toLocaleString("pt-BR")} pedidos`,
-    value: `${formatNumber(acc.fardos)} Fardos`,
-    details: [
-      { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
-      { label: "Faturamento", value: formatCurrency(acc.revenue) },
-      { label: "Pedidos com este fornecedor", value: `${acc.orders.size}` },
-      { label: "% do total de fardos", value: `${total > 0 ? ((acc.fardos / total) * 100).toFixed(1) : "0"}%` },
-    ],
-  }));
+  // Fornecedores: além de fardos/faturamento/pedidos/%, mostra qual região
+  // mais compra daquele fornecedor (por faturamento), com a quantidade de
+  // fardos e o faturamento gerado especificamente naquela região.
+  const supplierTotalFardos = Array.from(suppliers.values()).reduce((sum, a) => sum + a.fardos, 0);
+  const topSuppliers: RankingItem[] = Array.from(suppliers.entries())
+    .sort((a, b) => b[1].fardos - a[1].fardos)
+    .slice(0, 8)
+    .map(([name, acc], index) => {
+      let topRegionName = "Sem região";
+      let topRegionData: RegionBreakdown = { revenue: 0, fardos: 0 };
+      for (const [regionName, regionData] of acc.regions.entries()) {
+        if (regionData.revenue > topRegionData.revenue) {
+          topRegionName = regionName || "Sem região";
+          topRegionData = regionData;
+        }
+      }
+
+      return {
+        position: index + 1,
+        name,
+        subtitle: `${acc.orders.size.toLocaleString("pt-BR")} pedidos`,
+        value: `${formatNumber(acc.fardos)} Fardos`,
+        details: [
+          { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
+          { label: "Faturamento", value: formatCurrency(acc.revenue) },
+          { label: "Pedidos com este fornecedor", value: `${acc.orders.size}` },
+          {
+            label: "% do total de fardos",
+            value: `${supplierTotalFardos > 0 ? ((acc.fardos / supplierTotalFardos) * 100).toFixed(1) : "0"}%`,
+          },
+          { label: "Região que mais compra", value: topRegionName },
+          { label: "Fardos vendidos nessa região", value: `${formatNumber(topRegionData.fardos)} un.` },
+          { label: "Faturamento nessa região", value: formatCurrency(topRegionData.revenue) },
+        ],
+      };
+    });
 
   const groupColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b", "#334155"];
   const groupSalesData: GroupSalesData[] = Array.from(groupTotals.entries())
@@ -329,8 +464,8 @@ export function buildDashboardAggregates(
     .map(([name, t], i) => ({ name, value: t.value, fardos: t.fardos, color: groupColors[i % groupColors.length] }));
 
   const productsByGroup: Record<string, RankingItem[]> = {};
-  for (const [group, groupProducts] of productsByGroupMap.entries()) {
-    productsByGroup[group] = rankFromMap(groupProducts, "fardos", 3, (name, acc, total) => ({
+  for (const [group, groupFamilies] of familiesByGroupMap.entries()) {
+    productsByGroup[group] = rankFromMap(groupFamilies, "fardos", 3, (name, acc, total) => ({
       name,
       value: `${formatNumber(acc.fardos)} Fardos`,
       subtitle: formatCurrency(acc.revenue),
@@ -345,27 +480,9 @@ export function buildDashboardAggregates(
 
   // Gráfico "Faturamento Total de Mercadorias": total de fardos vendidos +
   // faturamento, dia a dia. Preenche com zero os dias do período sem venda
-  // pra o eixo ficar contínuo. Reage ao filtro de mercadoria/região porque
+  // pra o eixo ficar contínuo. Reage ao filtro de família/região porque
   // `records` já chega filtrado do page.tsx.
-  const from = fromStr ? parseFlexibleDate(fromStr) : null;
-  const to = toStr ? parseFlexibleDate(toStr) : null;
-
-  if (from && to) {
-    const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-    const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-    while (cursor.getTime() <= end.getTime()) {
-      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
-      if (!dailyMap.has(key)) dailyMap.set(key, { revenue: 0, fardos: 0 });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  }
-
-  const dailyTotals: DailyTotal[] = Array.from(dailyMap.entries())
-    .sort((a, b) => (a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0))
-    .map(([dateKey, totals]) => {
-      const [, m, d] = dateKey.split("-");
-      return { day: `${d}/${m}`, dateKey, revenue: totals.revenue, fardos: totals.fardos };
-    });
+  const dailyTotals = buildDailyMap(safeRecords, fromStr, toStr);
 
   return {
     topManagers,

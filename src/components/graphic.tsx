@@ -11,6 +11,7 @@ import {
     CartesianGrid,
     Tooltip,
     Legend,
+    LabelList,
 } from "recharts";
 import type { DailyTotal } from "@/lib/salesAggregations";
 
@@ -65,7 +66,7 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                 ) : (
                     <div className="h-[380px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                            <ComposedChart data={data} margin={{ top: 24, right: 20, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                 <XAxis
                                     dataKey="day"
@@ -79,7 +80,6 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                                     tick={{ fontSize: 11, fill: "#6b7280" }}
                                     axisLine={false}
                                     tickLine={false}
-                                    label={{ value: "Fardos", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#6b7280" } }}
                                 />
                                 <YAxis
                                     yAxisId="revenue"
@@ -98,7 +98,14 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                                     fill={FARDOS_COLOR}
                                     radius={[3, 3, 0, 0]}
                                     isAnimationActive={false}
-                                />
+                                >
+                                    <LabelList
+                                        dataKey="fardos"
+                                        position="top"
+                                        formatter={(value: number) => (value > 0 ? value.toLocaleString("pt-BR") : "")}
+                                        style={{ fontSize: 10, fill: "#2d2d2d", fontWeight: 600 }}
+                                    />
+                                </Bar>
                                 <Line
                                     yAxisId="revenue"
                                     dataKey="revenue"
