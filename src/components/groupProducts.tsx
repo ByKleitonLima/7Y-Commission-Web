@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useCallback } from "react";
 
 export interface RankingDetail {
     label: string;
@@ -21,26 +21,24 @@ interface TopRankingCardProps {
     items: RankingItem[];
 }
 
-// min-h-[420px] fixo na caixa branca: garante uma altura previsível mesmo
-// sem depender do card vizinho no grid (o "items-stretch" continua
-// ajudando quando o irmão é mais alto, mas não é mais um requisito pra
-// centralizar o texto de "sem dados"). O empty-state usa flex-1 +
-// items-center + justify-center dentro dessa caixa, então fica centralizado
-// nos dois eixos independente da altura final.
 function TopRankingCard({ title, items }: TopRankingCardProps) {
     const [hovered, setHovered] = useState<number | null>(null);
     const safeItems = items ?? [];
 
+    const handleLeave = useCallback((index: number) => {
+        setHovered((h) => (h === index ? null : h));
+    }, []);
+
     return (
-        <div className="flex h-full flex-1 flex-col">
+        <div className="mt-8 flex h-full min-w-0 flex-1 flex-col">
             <h2 className="border-b border-gray-200 pb-2 text-base font-semibold text-[#2d2d2d]">
                 {title}
             </h2>
 
-            <div className="mt-4 flex min-h-[420px] flex-1 flex-col rounded-xl border border-gray-200 bg-white p-2">
+            <div className="mt-4 flex min-h-[420px] flex-1 flex-col rounded-xl border border-gray-200 bg-white p-6">
                 {safeItems.length === 0 ? (
                     <div className="flex flex-1 items-center justify-center">
-                        <p className="px-4 text-center text-xs text-gray-400">
+                        <p className="px-4 text-center text-sm text-gray-400">
                             Nenhum dado encontrado para os filtros selecionados.
                         </p>
                     </div>
@@ -51,7 +49,7 @@ function TopRankingCard({ title, items }: TopRankingCardProps) {
                             className={`relative flex items-center gap-3 px-2 py-3 ${index !== safeItems.length - 1 ? "border-b border-gray-100/50" : ""
                                 }`}
                             onMouseEnter={() => setHovered(index)}
-                            onMouseLeave={() => setHovered((h) => (h === index ? null : h))}
+                            onMouseLeave={() => handleLeave(index)}
                         >
                             <span className="w-4 text-sm font-medium text-gray-500">
                                 {item.position}º

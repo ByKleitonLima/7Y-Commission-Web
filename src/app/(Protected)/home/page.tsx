@@ -3,9 +3,9 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import DateRangeFilter from "@/components/dateRangeFilter";
 import RefreshButton from "@/components/refreshButton";
-import TopRankingCard from "@/components/topRankCard";
+import TopRankingCard from "@/components/groupProducts";
+import GroupSalesPieChart from "@/components/topRankCard";
 import DailySalesChart from "@/components/graphic";
-import GroupSalesPieChart from "@/components/groupProducts";
 import { useSalesData } from "@/context/salesDataContext";
 import { Loader2 } from "lucide-react";
 import {
@@ -42,19 +42,15 @@ function readSavedRange(): { from: string; to: string } {
             if (parsed?.from && parsed?.to) return parsed;
         }
     } catch {
-        // ignora JSON inválido e usa o padrão
+        return getDefaultRange();
     }
     return getDefaultRange();
 }
 
 export default function Home() {
     const [dateRange, setDateRange] = useState(() => readSavedRange());
-    // Filtro principal do Dashboard (antes "Mercadoria", agora agrupa por
-    // FAMÍLIA — coluna FAMILIA da planilha importada).
     const [selectedFamily, setSelectedFamily] = useState<string>(ALL_FAMILIES);
     const [selectedRegion, setSelectedRegion] = useState<string>(ALL_REGIONS);
-    // Filtro independente, só do gráfico "Faturamento Total de Mercadorias":
-    // não interfere nos demais cards/rankings da Home.
     const [chartFamily, setChartFamily] = useState<string>(ALL_FAMILIES);
     const { records, isLoading, refresh } = useSalesData();
 
@@ -62,7 +58,7 @@ export default function Home() {
         try {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(dateRange));
         } catch {
-            // localStorage indisponível — segue sem persistir
+            return;
         }
     }, [dateRange]);
 
@@ -70,9 +66,6 @@ export default function Home() {
         setDateRange({ from, to });
     }, []);
 
-    // Relatórios da Home consideram só pedidos de venda de fato (DESCR.
-    // "[D] - PED. VENDA" ou "PED. VENDA"). O resto dos lançamentos (ex:
-    // devolução, bonificação) fica de fora e é usado em outras telas.
     const saleOrderRecords = useMemo(() => filterSaleOrders(records || []), [records]);
 
     const recordsInRange = useMemo(
@@ -80,16 +73,9 @@ export default function Home() {
         [saleOrderRecords, dateRange]
     );
 
-    // Opções de filtro calculadas ANTES do filtro de Família/Região, pra que
-    // o dropdown sempre mostre todas as opções disponíveis no período,
-    // independente do que já está selecionado.
     const familyOptions = useMemo(() => getSortedFamilies(recordsInRange), [recordsInRange]);
     const regionOptions = useMemo(() => getSortedRegions(recordsInRange), [recordsInRange]);
 
-    // ---- Sequência de filtragem: período -> família -> região ----
-    // Esse é o ÚNICO conjunto de registros usado por todos os cards,
-    // rankings e gráficos da Home (exceto o gráfico diário, que aplica um
-    // filtro de família adicional e independente por cima deste).
     const filteredRecords = useMemo(() => {
         if (selectedFamily === ALL_FAMILIES && selectedRegion === ALL_REGIONS) return recordsInRange;
         return recordsInRange.filter((record) => {
@@ -106,10 +92,6 @@ export default function Home() {
         [filteredRecords, dateRange]
     );
 
-    // Filtro independente só do gráfico "Faturamento Total de Mercadorias":
-    // parte dos mesmos registros já filtrados por região/período/família
-    // principal, mas deixa escolher uma família específica (ou todas) só
-    // pra esse gráfico, sem afetar os demais componentes da Home.
     const chartRecords = useMemo(() => {
         if (chartFamily === ALL_FAMILIES) return filteredRecords;
         return filteredRecords.filter(
@@ -142,13 +124,6 @@ export default function Home() {
                 </div>
             )}
 
-            {/*
-              Barra de filtros: todos os controles (Família, Região, Período,
-              Atualizar) ficam num único flex "items-end", cada um dentro de
-              uma coluna com label + controle de mesma altura (h-10). O botão
-              Atualizar ganha um label invisível igual aos demais só pra
-              garantir que a base de todos os elementos fique alinhada.
-            */}
             <div className="flex flex-wrap items-end gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div>
                     <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Família</label>
@@ -189,20 +164,6 @@ export default function Home() {
                     </label>
                     <RefreshButton onRefresh={refresh} />
                 </div>
-            </div>
-
-            {/*
-              DIAGNÓSTICO TEMPORÁRIO — remova este bloco depois de confirmar
-              onde os dados estão zerando. Mostra a contagem de registros em
-              cada etapa do pipeline (total carregado -> pedidos de venda ->
-              dentro do período -> após família/região). Assim que a Home
-              estiver mostrando dados normalmente, pode apagar este <div>.
-            */}
-            <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-                <strong>Diagnóstico:</strong> total carregado: {records?.length ?? 0} · pedidos de venda
-                (DESCR. contém &quot;PED. VENDA&quot;): {saleOrderRecords.length} · dentro do período (
-                {dateRange.from} a {dateRange.to}): {recordsInRange.length} · após família/região:{" "}
-                {filteredRecords.length}
             </div>
 
             {!hasData && !isLoading && (

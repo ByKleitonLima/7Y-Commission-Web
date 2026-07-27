@@ -65,11 +65,6 @@ function CustomTooltip({ active, payload, data }: any) {
     );
 }
 
-// min-h-[420px] fixo na caixa branca (igual ao TopRankingCard), pra que a
-// caixa nunca dependa só do "items-stretch" do grid pra ter uma altura
-// razoável. Dentro dela, o conteúdo (gráfico OU mensagem de "sem dados")
-// ocupa flex-1 + items-center + justify-center, então fica sempre
-// centralizado nos dois eixos.
 function GroupSalesPieChart({
     title,
     data = [],
@@ -102,6 +97,7 @@ function GroupSalesPieChart({
                                     innerRadius={70}
                                     outerRadius={110}
                                     paddingAngle={2}
+                                    isAnimationActive={false}
                                 >
                                     {chartData.map((entry) => (
                                         <Cell key={entry.name} fill={entry.color} />

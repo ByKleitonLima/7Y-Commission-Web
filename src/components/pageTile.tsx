@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/components/menu";
 
@@ -14,8 +14,10 @@ const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 export function SidebarProvider({ children }: { children: ReactNode }) {
     const [expanded, setExpanded] = useState(false);
 
+    const value = useMemo(() => ({ expanded, setExpanded }), [expanded]);
+
     return (
-        <SidebarContext.Provider value={{ expanded, setExpanded }}>
+        <SidebarContext.Provider value={value}>
             {children}
         </SidebarContext.Provider>
     );
@@ -32,7 +34,10 @@ export function useSidebar() {
 export default function PageTitle() {
     const pathname = usePathname();
 
-    const current = NAV_ITEMS.find((item) => item.href === pathname);
+    const current = useMemo(
+        () => NAV_ITEMS.find((item) => item.href === pathname),
+        [pathname]
+    );
 
     if (!current) return null;
 

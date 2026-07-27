@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useMemo, memo } from "react";
 import {
     LayoutDashboard,
     UserCog,
@@ -24,7 +25,7 @@ export const NAV_ITEMS = [
 
 export const SIDEBAR_COLLAPSED_WIDTH = 72;
 
-export default function Sidebar() {
+function Sidebar() {
     const { expanded, setExpanded } = useSidebar();
     const pathname = usePathname();
     const { user, name, role, logout } = useAuth();
@@ -32,17 +33,25 @@ export default function Sidebar() {
     const displayName = name || user?.email?.split("@")[0] || "Usuário";
     const initial = displayName.charAt(0).toUpperCase();
 
+    const handleMouseEnter = useCallback(() => setExpanded(true), [setExpanded]);
+    const handleMouseLeave = useCallback(() => setExpanded(false), [setExpanded]);
+
+    const asideClassName = useMemo(
+        () =>
+            `fixed left-6 top-[50px] bottom-[50px] z-40 flex flex-col rounded-2xl bg-[#2d2d2d] transition-[width] duration-200 ease-out will-change-[width] ${expanded ? "w-65" : "w-[72px]"
+            }`,
+        [expanded]
+    );
+
     return (
         <aside
-            onMouseEnter={() => setExpanded(true)}
-            onMouseLeave={() => setExpanded(false)}
-            className={`fixed left-6 top-[50px] bottom-[50px] z-40 flex flex-col rounded-2xl bg-[#2d2d2d] transition-[width] duration-300 ease-in-out ${expanded ? "w-65" : "w-[72px]"
-                }`}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className={asideClassName}
         >
-
             <div className="flex h-20 shrink-0 justify-center items-center overflow-hidden mt-9 mb-9">
                 <div
-                    className={`relative transition-all duration-300 ease-in-out ${expanded ? "h-14 w-[130px]" : "h-9 w-9"
+                    className={`relative transition-all duration-200 ease-out ${expanded ? "h-14 w-[130px]" : "h-9 w-9"
                         }`}
                 >
                     <Image
@@ -69,7 +78,7 @@ export default function Sidebar() {
                         >
                             <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
                             <span
-                                className={`whitespace-nowrap text-sm font-medium transition-opacity duration-200 ${expanded ? "opacity-100" : "opacity-0"
+                                className={`whitespace-nowrap text-sm font-medium transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"
                                     }`}
                             >
                                 {label}
@@ -85,7 +94,7 @@ export default function Sidebar() {
                         {initial}
                     </div>
                     <div
-                        className={`whitespace-nowrap transition-opacity duration-200 ${expanded ? "opacity-100" : "opacity-0"
+                        className={`whitespace-nowrap transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"
                             }`}
                     >
                         <p className="text-sm font-medium leading-tight text-white">
@@ -103,7 +112,7 @@ export default function Sidebar() {
                 >
                     <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} />
                     <span
-                        className={`whitespace-nowrap text-sm font-medium transition-opacity duration-200 ${expanded ? "opacity-100" : "opacity-0"
+                        className={`whitespace-nowrap text-sm font-medium transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"
                             }`}
                     >
                         Sair
@@ -113,3 +122,5 @@ export default function Sidebar() {
         </aside>
     );
 }
+
+export default memo(Sidebar);
