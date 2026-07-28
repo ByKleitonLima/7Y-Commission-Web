@@ -270,7 +270,11 @@ export interface DashboardAggregates {
 
   productAggregates: ProductAggregate[];
   supplierAggregates: SupplierAggregate[];
-  commissionBySupplier: RankingItem[];
+
+  group1Name: string;
+  group2Name: string;
+  group1Products: RankingItem[];
+  group2Products: RankingItem[];
 }
 
 function buildDailyMap(records: SalesRecord[], fromStr?: string, toStr?: string): DailyTotal[] {
@@ -394,6 +398,7 @@ export function buildDashboardAggregates(
   const suppliers = new Map<string, SupplierAccumulator>();
   const groupTotals = new Map<string, { netRevenue: number; fardos: number }>();
   const familiesByGroupMap = new Map<string, Map<string, Accumulator>>();
+  const groupProductsMap = new Map<string, Map<string, Accumulator & { productName: string }>>();
   const products = new Map<string, ReturnType<typeof newAcc> & { productCode: string; productName: string }>();
 
   let totalNetRevenue = 0;
@@ -479,6 +484,16 @@ export function buildDashboardAggregates(
     gf.netRevenue += netRevenue;
     gf.fardos += fardos;
     gf.orders.add(orderKey);
+
+    let groupProducts = groupProductsMap.get(group);
+    if (!groupProducts) groupProductsMap.set(group, (groupProducts = new Map()));
+    const groupProductKey = `${r.productCode || ""}__${r.productName || "Sem descrição"}`;
+    let gpAcc = groupProducts.get(groupProductKey);
+    if (!gpAcc) groupProducts.set(groupProductKey, (gpAcc = { ...newAcc(), productName: r.productName || "Sem descrição" }));
+    gpAcc.netRevenue += netRevenue;
+    gpAcc.fardos += fardos;
+    gpAcc.volume += volume;
+    gpAcc.orders.add(orderKey);
 
     const productKey = `${r.productCode || ""}__${r.productName || "Sem descrição"}`;
     let pr = products.get(productKey);
@@ -583,23 +598,6 @@ export function buildDashboardAggregates(
       };
     });
 
-  const commissionBySupplier = rankFromMap(
-    new Map(Array.from(suppliers.entries()).map(([name, acc]) => [name, acc as Accumulator])),
-    "commission",
-    8,
-    (name, acc, total) => ({
-      name,
-      value: formatCurrency(acc.commission),
-      subtitle: formatCurrency(acc.netRevenue),
-      details: [
-        { label: "Comissão", value: formatCurrency(acc.commission) },
-        { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
-        { label: "Pedidos", value: `${acc.orders.size}` },
-        { label: "% da comissão total", value: formatPercent(total > 0 ? (acc.commission / total) * 100 : 0) },
-      ],
-    })
-  );
-
   const groupColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b", "#334155"];
   const groupSalesData: GroupSalesData[] = Array.from(groupTotals.entries())
     .sort((a, b) => b[1].netRevenue - a[1].netRevenue)
@@ -652,6 +650,36 @@ export function buildDashboardAggregates(
     };
   });
 
+  const sortedGroupsByRevenue = Array.from(groupTotals.entries()).sort(
+    (a, b) => b[1].netRevenue - a[1].netRevenue
+  );
+  const group1Name = sortedGroupsByRevenue[0]?.[0] || "";
+  const group2Name = sortedGroupsByRevenue[1]?.[0] || "";
+
+  function buildGroupTop5(groupName: string): RankingItem[] {
+    const groupMap = groupProductsMap.get(groupName);
+    if (!groupMap) return [];
+
+    const byName = new Map<string, Accumulator>(
+      Array.from(groupMap.values()).map((acc) => [acc.productName, acc])
+    );
+
+    return rankFromMap(byName, "fardos", 5, (name, acc, total) => ({
+      name,
+      value: `${formatNumber(acc.fardos)} Fardos`,
+      subtitle: formatCurrency(acc.netRevenue),
+      details: [
+        { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
+        { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
+        { label: "Pedidos", value: `${acc.orders.size}` },
+        { label: "% do grupo", value: formatPercent(total > 0 ? (acc.fardos / total) * 100 : 0) },
+      ],
+    }));
+  }
+
+  const group1Products = buildGroupTop5(group1Name);
+  const group2Products = buildGroupTop5(group2Name);
+
   return {
     totalNetRevenue,
     totalGrossRevenue,
@@ -668,6 +696,9 @@ export function buildDashboardAggregates(
     topSuppliers,
     productAggregates,
     supplierAggregates,
-    commissionBySupplier,
+    group1Name,
+    group2Name,
+    group1Products,
+    group2Products,
   };
 }

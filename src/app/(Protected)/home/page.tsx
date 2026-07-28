@@ -196,9 +196,10 @@ export default function Home() {
                         <DailySalesChart title="Evolução do Faturamento Líquido" data={dailyTotalsForChart} />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-3">
                         <GroupSalesPieChart title="Faturamento Líquido por Grupos (R$)" data={aggregates.groupSalesData} />
-                        <TopRankingCard title="Comissão por Fornecedor" items={aggregates.commissionBySupplier} />
+                        <TopRankingCard title={`Top 5 Produtos - ${aggregates.group1Name || "Grupo 1"}`} items={aggregates.group1Products} />
+                        <TopRankingCard title={`Top 5 Produtos - ${aggregates.group2Name || "Grupo 2"}`} items={aggregates.group2Products} />
                     </div>
 
                     <SupplierRankingTable suppliers={aggregates.supplierAggregates} />

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
-import { X } from "lucide-react";
+import { useState, FormEvent, useEffect, ChangeEvent } from "react";
+import { X, User } from "lucide-react";
 import { Seller } from "@/components/sellersStable";
+import { uploadImageFile } from "@/lib/uploadImage";
 
 interface AddSellerModalProps {
     open: boolean;
@@ -16,6 +17,10 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
     const [code, setCode] = useState("");
     const [name, setName] = useState("");
     const [status, setStatus] = useState<"Ativo" | "Inativo">("Ativo");
+    const [photoUrl, setPhotoUrl] = useState("");
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState("");
+    const [uploading, setUploading] = useState(false);
 
     const isEditing = Boolean(sellerToEdit);
 
@@ -24,6 +29,9 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
         setCode("");
         setName("");
         setStatus("Ativo");
+        setPhotoUrl("");
+        setPhotoFile(null);
+        setPhotoPreview("");
     };
 
     useEffect(() => {
@@ -34,6 +42,9 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
             setCode(sellerToEdit.code || "");
             setName(sellerToEdit.name || "");
             setStatus(sellerToEdit.status || "Ativo");
+            setPhotoUrl(sellerToEdit.photoUrl || "");
+            setPhotoFile(null);
+            setPhotoPreview(sellerToEdit.photoUrl || "");
         } else {
             resetForm();
         }
@@ -44,9 +55,36 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
         onClose();
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handlePhotoChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setPhotoFile(file);
+        setPhotoPreview(URL.createObjectURL(file));
+    };
+
+    const handleRemovePhoto = () => {
+        setPhotoFile(null);
+        setPhotoPreview("");
+        setPhotoUrl("");
+    };
+
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!name.trim()) return;
+
+        let finalPhotoUrl = photoUrl;
+
+        if (photoFile) {
+            try {
+                setUploading(true);
+                finalPhotoUrl = await uploadImageFile(photoFile, "sellers");
+            } catch (err) {
+                console.error("Erro ao enviar foto do vendedor:", err);
+                setUploading(false);
+                return;
+            }
+            setUploading(false);
+        }
 
         onSave({
             supId: supId || "",
@@ -55,6 +93,7 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
             clientsCount: sellerToEdit?.clientsCount ?? 0,
             ordersCount: sellerToEdit?.ordersCount ?? 0,
             status,
+            photoUrl: finalPhotoUrl || "",
         });
         resetForm();
         onClose();
@@ -78,6 +117,31 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="flex items-center gap-4">
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
+                            {photoPreview ? (
+                                <img src={photoPreview} alt="Prévia" className="h-full w-full object-cover" />
+                            ) : (
+                                <User className="h-7 w-7 text-gray-400" strokeWidth={1.75} />
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                Escolher foto
+                                <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+                            </label>
+                            {photoPreview && (
+                                <button
+                                    type="button"
+                                    onClick={handleRemovePhoto}
+                                    className="text-xs font-medium text-red-500 hover:text-red-600"
+                                >
+                                    Remover foto
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
                         <input
@@ -140,9 +204,10 @@ export default function AddSellerModal({ open, onClose, onSave, sellerToEdit }: 
                         </button>
                         <button
                             type="submit"
-                            className="rounded-lg bg-[#2d2d2d] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1f1f1f]"
+                            disabled={uploading}
+                            className="rounded-lg bg-[#2d2d2d] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1f1f1f] disabled:opacity-70"
                         >
-                            {isEditing ? "Salvar alterações" : "Salvar"}
+                            {uploading ? "Enviando foto..." : isEditing ? "Salvar alterações" : "Salvar"}
                         </button>
                     </div>
                 </form>

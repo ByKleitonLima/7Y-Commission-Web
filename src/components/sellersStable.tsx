@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Pencil, Trash2, SlidersHorizontal } from "lucide-react";
+import { Search, Pencil, Trash2, SlidersHorizontal, User } from "lucide-react";
 import StatusBadge from "@/components/statusBadge";
 import Modal from "@/components/modal";
 
@@ -13,6 +13,7 @@ export interface Seller {
     clientsCount: number;
     ordersCount: number;
     status: "Ativo" | "Inativo";
+    photoUrl?: string;
 }
 
 type StatusFilter = "Todos os status" | "Ativos" | "Inativos";
@@ -134,7 +135,18 @@ export default function SellersTable({ sellers, onEdit, onDelete }: SellersTable
                         <tr key={seller.id} className="border-b border-gray-50 last:border-0">
                             <td className="px-4 py-3 text-gray-500">{seller.supId}</td>
                             <td className="px-4 py-3 text-gray-500">{seller.code}</td>
-                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">{seller.name}</td>
+                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
+                                        {seller.photoUrl ? (
+                                            <img src={seller.photoUrl} alt={seller.name} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <User className="h-4 w-4 text-gray-400" strokeWidth={1.75} />
+                                        )}
+                                    </div>
+                                    {seller.name}
+                                </div>
+                            </td>
                             <td className="px-4 py-3 text-gray-500">{Number(seller.clientsCount) || 0}</td>
                             <td className="px-4 py-3 text-gray-500">{Number(seller.ordersCount) || 0}</td>
                             <td className="px-4 py-3">

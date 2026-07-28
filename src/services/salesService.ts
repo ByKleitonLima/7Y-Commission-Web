@@ -11,6 +11,7 @@ const HISTORY_TABLE = "upload_history";
 const MANAGERS_TABLE = "managers";
 const SELLERS_TABLE = "sellers";
 const CLIENTS_TABLE = "clients";
+const SUPPLIER_PHOTOS_TABLE = "supplier_photos";
 
 // Tamanho de página usado na paginação. O Supabase/PostgREST limita a resposta
 // de um único .select() a 1000 linhas por padrão (max-rows). Sem paginação e
@@ -401,6 +402,7 @@ export async function fetchSellers(): Promise<Seller[]> {
     clientsCount: row.clients_count,
     ordersCount: row.orders_count,
     status: row.status,
+    photoUrl: row.photo_url,
   }));
 }
 
@@ -499,6 +501,7 @@ export async function createSeller(seller: {
   clientsCount: number;
   ordersCount: number;
   status: "Ativo" | "Inativo";
+  photoUrl?: string;
 }): Promise<Seller> {
   const { data, error } = await supabase
     .from(SELLERS_TABLE)
@@ -510,6 +513,7 @@ export async function createSeller(seller: {
         clients_count: seller.clientsCount ?? 0,
         orders_count: seller.ordersCount ?? 0,
         status: seller.status,
+        photo_url: seller.photoUrl || null,
         updated_at: new Date().toISOString(),
       },
     ])
@@ -529,6 +533,7 @@ export async function createSeller(seller: {
     clientsCount: data.clients_count,
     ordersCount: data.orders_count,
     status: data.status,
+    photoUrl: data.photo_url,
   };
 }
 
@@ -539,6 +544,7 @@ export async function updateSeller(
     code: string;
     name: string;
     status: "Ativo" | "Inativo";
+    photoUrl?: string;
   }
 ): Promise<void> {
   const { error } = await supabase
@@ -548,6 +554,7 @@ export async function updateSeller(
       seller_code: seller.code,
       name: seller.name,
       status: seller.status,
+      photo_url: seller.photoUrl || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -653,4 +660,31 @@ export async function deleteSeller(id: string) {
 export async function deleteClient(id: string) {
   const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", id);
   if (error) console.error("Erro ao remover cliente:", error);
+}
+
+export async function fetchSupplierPhotos(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from(SUPPLIER_PHOTOS_TABLE).select("*");
+  if (error) {
+    console.error("Erro ao buscar fotos de fornecedores:", error);
+    return {};
+  }
+  const map: Record<string, string> = {};
+  (data ?? []).forEach((row: any) => {
+    map[row.supplier_name] = row.photo_url;
+  });
+  return map;
+}
+
+export async function upsertSupplierPhoto(supplierName: string, photoUrl: string): Promise<void> {
+  const { error } = await supabase
+    .from(SUPPLIER_PHOTOS_TABLE)
+    .upsert(
+      [{ supplier_name: supplierName, photo_url: photoUrl, updated_at: new Date().toISOString() }],
+      { onConflict: "supplier_name" }
+    );
+
+  if (error) {
+    console.error("Erro ao salvar foto do fornecedor:", error);
+    throw error;
+  }
 }
