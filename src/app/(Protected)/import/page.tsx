@@ -22,13 +22,16 @@ import type { SalesRecord } from "@/context/salesDataContext";
 // texto (ex: "Administrador"), ajuste os dois lugares juntos.
 const ADMIN_ROLE = "Admin";
 
-// Mesma chave usada nos agregados (orgAggregations/salesAggregations):
-// NR_UNICO se existir, senão uma combinação de produto+data+valor.
+// Mesma chave usada no upsert do banco (services/salesService.ts): o
+// NR_ÚNICO da planilha é o número do PEDIDO, não da linha — um pedido tem
+// em média ~5 produtos com o mesmo NR_ÚNICO. Usar só o NR_ÚNICO como chave
+// (como era antes) faz esse dedupe local descartar quase todos os produtos
+// de cada pedido, mantendo só o primeiro. A chave real de uma linha é
+// pedido + produto.
 function getRecordKey(r: SalesRecord): string {
-    return (
-        r.uniqueNumber?.trim() ||
-        `${r.productCode}-${r.issueDate}-${r.totalValue}`
-    );
+    const order = r.uniqueNumber?.trim();
+    if (order) return `${order}-${r.productCode}-${r.totalValue}`;
+    return `${r.productCode}-${r.issueDate}-${r.totalValue}`;
 }
 
 // Remove linhas duplicadas dentro do próprio arquivo importado, antes de
@@ -155,8 +158,9 @@ export default function ImportPage() {
                 );
             }
 
-            // uploadSalesRecordsInBatches faz upsert por unique_number, então
-            // reenviar linhas já existentes atualiza em vez de duplicar.
+            // uploadSalesRecordsInBatches faz upsert por (unique_number,
+            // product_code), então reenviar linhas já existentes atualiza em
+            // vez de duplicar.
             await uploadSalesRecordsInBatches(records, historyEntry.id, (sent, total) => {
                 setSaveProgress({ done: sent, total });
             });

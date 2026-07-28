@@ -39,6 +39,22 @@ const REQUIRED_KEYS = [
   "CODGRUPO", "REGPROMO", "VLRPROMO", "GRUPO", "FAMILIA",
 ];
 
+// Algumas exportações do relatório de origem repetem a linha de cabeçalho
+// no meio dos dados (uma vez por "página" do relatório original). Essas
+// linhas trazem o próprio nome da coluna como valor — ex: a coluna
+// ID_SUPERVISOR contém literalmente o texto "ID_SUPERVISOR". Se isso não
+// for filtrado, cada ocorrência vira um gerente/vendedor/cliente fantasma
+// nas telas de Gerentes, Vendedores e Clientes (com nome "GERENTE",
+// "VENDEDOR", "NOMEPARC" etc.), porque o parser não tem como distinguir
+// esse texto de um dado real.
+const HEADER_ECHO_MARKERS = ["ID_SUPERVISOR", "CODVEN", "CODPARC", "NR_UNICO"];
+
+function isHeaderEchoRow(normalized: Record<string, unknown>): boolean {
+  return HEADER_ECHO_MARKERS.every(
+    (key) => String(normalized[key] ?? "").trim().toUpperCase() === key
+  );
+}
+
 export async function parseSalesFile(file: File): Promise<SalesRecord[]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
@@ -63,12 +79,23 @@ export async function parseSalesFile(file: File): Promise<SalesRecord[]> {
     }
   }
 
-  return rawRows.map((row) => {
+  const normalizedRows = rawRows.map((row) => {
     const normalized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(row)) {
       normalized[normalizeKey(key)] = value;
     }
+    return normalized;
+  });
 
+  const validRows = normalizedRows.filter((row) => !isHeaderEchoRow(row));
+  const headerEchoCount = normalizedRows.length - validRows.length;
+  if (headerEchoCount > 0) {
+    console.warn(
+      `[parseSalesFile] ${headerEchoCount} linha(s) de cabeçalho repetido dentro dos dados foram descartadas (artefato de paginação da planilha de origem).`
+    );
+  }
+
+  return validRows.map((normalized) => {
     return {
       supervisorId: String(normalized["ID_SUPERVISOR"] ?? ""),
       managerName: String(normalized["GERENTE"] ?? ""),

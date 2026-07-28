@@ -30,8 +30,11 @@ function toDbRecord(record: SalesRecord, uploadId?: string) {
     client_code: record.clientCode,
     client_name: record.clientName,
     issue_date: record.issueDate || new Date().toLocaleDateString("pt-BR"),
-    // unique_number é a chave de deduplicação usada no upsert (evita
-    // duplicar ao reenviar a mesma planilha).
+    // unique_number guarda o número do PEDIDO (NR_ÚNICO da planilha), como
+    // sempre guardou — precisa ficar intacto porque orgAggregations.ts e
+    // salesAggregations.ts usam esse campo pra contar PEDIDOS distintos.
+    // A deduplicação por LINHA (pedido + produto) é feita no onConflict do
+    // upsert em uploadSalesRecordsInBatches, não aqui.
     unique_number:
       record.uniqueNumber && record.uniqueNumber.trim() !== ""
         ? record.uniqueNumber
@@ -111,11 +114,17 @@ function fromDbRecord(row: any): SalesRecord {
   };
 }
 
-// Envia os registros em blocos, fazendo UPSERT por unique_number (evita
-// duplicar ao reenviar a mesma planilha) e marcando cada linha com o
-// uploadId do histórico correspondente (permite excluir tudo depois).
+// Envia os registros em blocos, fazendo UPSERT pela combinação
+// (unique_number, product_code) e marcando cada linha com o uploadId do
+// histórico correspondente (permite excluir tudo depois).
 //
-// IMPORTANTE: exige a constraint UNIQUE em unique_number e a coluna
+// IMPORTANTE: unique_number é o número do PEDIDO — um mesmo pedido tem
+// várias linhas (uma por produto), todas com o mesmo unique_number. Fazer
+// upsert só por unique_number faz cada linha nova de um pedido sobrescrever
+// a anterior, perdendo quase todos os produtos daquele pedido. Por isso o
+// conflito é resolvido pelo par (unique_number, product_code).
+//
+// Exige a constraint UNIQUE (unique_number, product_code) e a coluna
 // upload_id em sales_records — ver migration.sql.
 export async function uploadSalesRecordsInBatches(
   records: SalesRecord[],
@@ -132,7 +141,7 @@ export async function uploadSalesRecordsInBatches(
 
     const { error } = await supabase
       .from(TABLE)
-      .upsert(chunk, { onConflict: "unique_number", ignoreDuplicates: false });
+      .upsert(chunk, { onConflict: "unique_number,product_code", ignoreDuplicates: false });
 
     if (error) throw error;
 
