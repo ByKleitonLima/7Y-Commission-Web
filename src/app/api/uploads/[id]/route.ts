@@ -1,26 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedAdmin } from "@/lib/verifyAuth";
+import { getAuthenticatedUser } from "@/lib/verifyAuth"; // Ajustado para pegar qualquer usuário logado
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const admin = await getAuthenticatedAdmin(req);
-  if (!admin) {
+  // Alterado: agora valida apenas se o usuário está autenticado no sistema
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json(
-      { error: "Apenas administradores podem excluir importações." },
-      { status: 403 }
+      { error: "Você precisa estar autenticado para excluir importações." },
+      { status: 401 }
     );
   }
 
   const { id } = await params;
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Apaga primeiro as sales_records vinculadas a essa importação, sem
-  // depender de um ON DELETE CASCADE configurado (ou não) no banco — essa
-  // era a causa de "excluir" o histórico mas os dados continuarem contando
-  // no Dashboard.
+  // Apaga primeiro as sales_records vinculadas a essa importação
   const { error: recordsError } = await supabaseAdmin
     .from("sales_records")
     .delete()
@@ -31,6 +29,7 @@ export async function DELETE(
     return NextResponse.json({ error: recordsError.message }, { status: 500 });
   }
 
+  // Em seguida apaga o registro do histórico
   const { error } = await supabaseAdmin
     .from("upload_history")
     .delete()

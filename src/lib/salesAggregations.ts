@@ -4,33 +4,36 @@ import type { GroupSalesData } from "@/components/groupProducts";
 import { isSaleOrder } from "@/lib/orgAggregations";
 
 /*
- * ATENÇÃO — reescrita para performance:
- * A versão anterior usava getProp() (varredura de todas as chaves do objeto +
- * toLowerCase em cada uma, a cada campo lido, em 9 loops separados sobre o
- * array completo de registros). Como os SalesRecord já são tipados e vêm
- * normalizados de fromDbRecord()/parseSalesFile.ts, esse acesso "flexível"
- * era puro overhead e é a causa raiz do travamento da Home.
+ * MAPEAMENTO OFICIAL DE COLUNAS (definido pelo time de negócio):
  *
- * Agora: 1 único loop sobre os registros (buildDashboardAggregates) monta
- * TODOS os agregados de uma vez, com acesso direto aos campos (r.totalValue,
- * r.managerName, etc). As funções antigas (getTopManagers, getTopSellers...)
- * continuam existindo para não quebrar imports existentes, mas cada uma é
- * apenas uma fatia do resultado de buildDashboardAggregates — chame
- * buildDashboardAggregates() UMA vez em page.tsx e reuse o resultado.
+ *  QTDNEG        (quantity)       -> Quantidade em PACOTES. Usar em todo
+ *                                     indicador/gráfico/ranking de quantidade.
+ *  QTDFARD       (bundleQuantity) -> Quantidade em FARDOS. Indicador próprio,
+ *                                     sempre exibido separado de "pacotes".
+ *  VLRUNIT       (unitValue)      -> Valor unitário de COMPRA. NUNCA usar para
+ *                                     calcular faturamento. Só aparece em
+ *                                     detalhe/tooltip/tabela de produto.
+ *  VLRTOT        (totalValue)     -> Valor BRUTO do pedido. Usado só como
+ *                                     métrica complementar (comparação bruto x
+ *                                     líquido), nunca como "faturamento".
+ *  % BOLETO / VLR / % DESC_BONI   -> Descontos. Só em detalhe/tooltip.
+ *  VLR_LIQUIDO   (netValue)       -> COLUNA OFICIAL para qualquer valor
+ *                                     financeiro: Receita, Faturamento, KPIs,
+ *                                     gráficos, cards, evolução, ranking
+ *                                     financeiro, ticket médio, comparações.
+ *  COMISSAO REPR (commissionValue)-> Comissão do representante. Indicadores
+ *                                     próprios (por fornecedor, produto,
+ *                                     cliente, representante, evolução).
+ *  Coluna "Z" (ignorada)          -> Não utilizada em nenhum cálculo da Home.
  *
- * ATUALIZAÇÃO (correção Home):
- * O dashboard passou a agrupar pela coluna FAMILIA da planilha (campo
- * `family` do SalesRecord) em vez da "Mercadoria" (nome do produto). Isso
- * afeta: filtro principal, ranking "topProducts" (mantém o nome do campo
- * por compatibilidade com a tela de Importação, mas os itens agora
- * representam Famílias), o agrupamento "Top 3 por Grupo" e o ranking de
- * fornecedores. O ranking de fornecedores também ganhou detalhamento por
- * região (qual região mais compra de cada fornecedor).
+ * Este arquivo é o único ponto de transformação dos dados usados pela Home —
+ * qualquer novo indicador financeiro DEVE ler `netValue`, nunca `totalValue`.
  */
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const formatCurrency = (v: number) => currency.format(v || 0);
 const formatNumber = (v: number) => (v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+const formatPercent = (v: number) => `${(v || 0).toFixed(1)}%`;
 
 // Cache de datas parseadas por registro (evita reparsear a mesma string
 // várias vezes em diferentes funções/rerenders do mesmo array de records).
@@ -66,14 +69,12 @@ export function extractDate(r: SalesRecord): Date | null {
   return d;
 }
 
-// Mantida por compatibilidade (algumas telas ainda podem exibir o nome do
-// produto individualmente), mas o Dashboard não usa mais isso para
-// agrupar/filtrar — ver extractFamily().
+// Mantida por compatibilidade (nome do produto isolado); o agrupamento por
+// descrição completa agora vive em buildProductAggregates().
 export function extractProduct(r: SalesRecord): string {
   return r?.productName || "Desconhecido";
 }
 
-// Chave principal de agrupamento do Dashboard (coluna FAMILIA da planilha).
 export function extractFamily(r: SalesRecord): string {
   const f = (r?.family || "").trim();
   return f || "Sem Família";
@@ -97,15 +98,13 @@ function getOrderKey(r: SalesRecord): string {
 
 // Só considera pedidos de venda de fato (DESCR. = "[D] - PED. VENDA" ou
 // "PED. VENDA"). Usado pelos relatórios da Home — o restante dos
-// lançamentos (devolução, bonificação etc.) fica de fora e é usado em
-// outras telas.
+// lançamentos (devolução, bonificação etc.) fica de fora.
 export function filterSaleOrders(records: SalesRecord[]): SalesRecord[] {
   return (records || []).filter(isSaleOrder);
 }
 
 // ---- Listas para popular os dropdowns de filtro (De/Até já aplicado antes) ----
 
-// Mantida por compatibilidade (não usada mais no filtro principal da Home).
 export function getSortedProducts(records: SalesRecord[]): string[] {
   const set = new Set<string>();
   for (const r of records || []) {
@@ -115,7 +114,9 @@ export function getSortedProducts(records: SalesRecord[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
-// Filtro principal da Home (antes "Mercadoria", agora "Família").
+// Filtro global "Família" (continua existindo mesmo com o gráfico de
+// família removido da Home, conforme pedido — os filtros globais precisam
+// continuar disponíveis para todos os gráficos).
 export function getSortedFamilies(records: SalesRecord[]): string[] {
   const set = new Set<string>();
   for (const r of records || []) {
@@ -162,21 +163,67 @@ export function filterByDateRange(records: SalesRecord[], fromStr: string, toStr
   });
 }
 
+// ---- Crescimento: compara Receita Líquida do período atual contra o
+// período imediatamente anterior, de mesma duração. ----
+
+export interface PeriodGrowth {
+  currentNetRevenue: number;
+  previousNetRevenue: number;
+  growthPercent: number | null; // null quando não há base de comparação
+}
+
+export function calculatePeriodGrowth(
+  records: SalesRecord[],
+  fromStr: string,
+  toStr: string
+): PeriodGrowth | null {
+  const from = parseFlexibleDate(fromStr);
+  const to = parseFlexibleDate(toStr);
+  if (!from || !to) return null;
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const fromTime = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const toTime = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() + dayMs - 1;
+  const periodDays = Math.round((toTime - fromTime) / dayMs) + 1;
+
+  const prevToTime = fromTime - 1;
+  const prevFromTime = prevToTime - periodDays * dayMs + 1;
+
+  let currentNetRevenue = 0;
+  let previousNetRevenue = 0;
+
+  for (const r of records || []) {
+    const d = extractDate(r);
+    if (!d) continue;
+    const t = d.getTime();
+    const net = Number(r.netValue) || 0;
+    if (t >= fromTime && t <= toTime) currentNetRevenue += net;
+    else if (t >= prevFromTime && t <= prevToTime) previousNetRevenue += net;
+  }
+
+  const growthPercent =
+    previousNetRevenue > 0 ? ((currentNetRevenue - previousNetRevenue) / previousNetRevenue) * 100 : null;
+
+  return { currentNetRevenue, previousNetRevenue, growthPercent };
+}
+
 // ---- Núcleo: 1 passagem só para todos os agregados da Home ----
 
 interface Accumulator {
-  revenue: number;
-  fardos: number;
-  volume: number;
+  netRevenue: number; // VLR_LIQUIDO — coluna oficial de faturamento
+  grossRevenue: number; // VLRTOT — só comparativo
+  commission: number; // COMISSAO REPR.
+  fardos: number; // QTDFARD
+  volume: number; // QTDNEG (pacotes)
   orders: Set<string>;
 }
 
 function newAcc(): Accumulator {
-  return { revenue: 0, fardos: 0, volume: 0, orders: new Set() };
+  return { netRevenue: 0, grossRevenue: 0, commission: 0, fardos: 0, volume: 0, orders: new Set() };
 }
 
 interface RegionBreakdown {
-  revenue: number;
+  netRevenue: number;
   fardos: number;
 }
 
@@ -185,12 +232,20 @@ interface SupplierAccumulator extends Accumulator {
 }
 
 function newSupplierAcc(): SupplierAccumulator {
-  return { revenue: 0, fardos: 0, volume: 0, orders: new Set(), regions: new Map() };
+  return {
+    netRevenue: 0,
+    grossRevenue: 0,
+    commission: 0,
+    fardos: 0,
+    volume: 0,
+    orders: new Set(),
+    regions: new Map(),
+  };
 }
 
 function rankFromMap(
   map: Map<string, Accumulator>,
-  sortKey: "revenue" | "fardos" | "volume",
+  sortKey: "netRevenue" | "fardos" | "volume" | "commission",
   limit: number,
   buildValue: (name: string, acc: Accumulator, totalForPercent: number) => Omit<RankingItem, "position">
 ): RankingItem[] {
@@ -212,36 +267,73 @@ function normalizeRegionLabel(region: string): string {
 export interface DailyTotal {
   day: string; // rótulo DD/MM pra exibir no eixo X
   dateKey: string; // AAAA-MM-DD, pra ordenação estável
-  revenue: number;
+  revenue: number; // SEMPRE VLR_LIQUIDO (faturamento líquido)
+  fardos: number; // QTDFARD
+}
+
+// Agrupamento por descrição completa do produto (substitui o antigo
+// agrupamento por Família na Home, conforme solicitado).
+export interface ProductAggregate {
+  productCode: string;
+  productName: string;
+  supplier: string;
+  family: string;
+  quantity: number; // QTDNEG (pacotes)
+  fardos: number; // QTDFARD
+  avgUnitValue: number; // VLRUNIT médio — informativo, não é faturamento
+  grossRevenue: number; // VLRTOT — informativo
+  netRevenue: number; // VLR_LIQUIDO — oficial
+  discountTotal: number; // grossRevenue - netRevenue, informativo
+  commission: number; // COMISSAO REPR.
+  orders: number;
+}
+
+export interface SupplierAggregate {
+  name: string;
+  netRevenue: number;
+  grossRevenue: number;
+  quantity: number;
   fardos: number;
+  commission: number;
+  orders: number;
+  participation: number; // % do faturamento líquido total entre fornecedores
 }
 
 export interface DashboardAggregates {
+  // KPIs gerais
+  totalNetRevenue: number; // Receita Total (VLR_LIQUIDO) — oficial
+  totalGrossRevenue: number; // Receita Bruta (VLRTOT) — comparativo
+  totalCommission: number; // Comissão Total (COMISSAO REPR.)
+  totalOrders: number;
+  avgTicket: number; // totalNetRevenue / totalOrders
+
   topManagers: RankingItem[];
   topSellers: RankingItem[];
-  // Mantido com esse nome por compatibilidade com a tela de Importação,
-  // mas os itens agora representam FAMÍLIAS (não mais "Mercadoria").
+  // Mantido por compatibilidade com a tela de Importação (ranking simples
+  // por família), mas a Home não usa mais isso como visualização principal.
   topProducts: RankingItem[];
   productsByGroup: Record<string, RankingItem[]>;
   dailyTotals: DailyTotal[];
   groupSalesData: GroupSalesData[];
   topRegions: RankingItem[];
-  topSuppliers: RankingItem[];
+  topSuppliers: RankingItem[]; // ranking existente (ordenado por fardos)
+
+  // Novidades pedidas
+  productAggregates: ProductAggregate[]; // tabela por Descrição do Produto
+  supplierAggregates: SupplierAggregate[]; // gráfico exclusivo de fornecedores
+  commissionBySupplier: RankingItem[];
 }
 
 // Monta o mapa dia -> { revenue, fardos } a partir de um conjunto de
-// registros, preenchendo com zero os dias do período sem venda (se
-// fromStr/toStr forem passados) pra o eixo do gráfico ficar contínuo.
-function buildDailyMap(
-  records: SalesRecord[],
-  fromStr?: string,
-  toStr?: string
-): DailyTotal[] {
+// registros. `revenue` é SEMPRE VLR_LIQUIDO. Preenche com zero os dias do
+// período sem venda (se fromStr/toStr forem passados) pra o eixo do gráfico
+// ficar contínuo.
+function buildDailyMap(records: SalesRecord[], fromStr?: string, toStr?: string): DailyTotal[] {
   const dailyMap = new Map<string, { revenue: number; fardos: number }>();
 
   for (const r of records || []) {
-    const revenue = Number(r.totalValue) || 0;
-    const fardos = Number(r.bundleQuantity) || 0;
+    const revenue = Number(r.netValue) || 0; // VLR_LIQUIDO — oficial
+    const fardos = Number(r.bundleQuantity) || 0; // QTDFARD
     const parsedDate = extractDate(r);
     if (parsedDate) {
       const dateKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
@@ -274,21 +366,83 @@ function buildDailyMap(
 }
 
 // Total diário isolado (sem os rankings), usado pelo filtro de Família
-// específico do gráfico "Faturamento Total de Mercadorias" — que pode ser
-// diferente do filtro geral da página.
-export function buildDailyTotals(
-  records: SalesRecord[],
-  fromStr?: string,
-  toStr?: string
-): DailyTotal[] {
+// específico do gráfico "Faturamento Total de Mercadorias".
+export function buildDailyTotals(records: SalesRecord[], fromStr?: string, toStr?: string): DailyTotal[] {
   return buildDailyMap(records || [], fromStr, toStr);
+}
+
+// Agrupamento por descrição completa do produto (chave = código + nome,
+// pra não misturar produtos homônimos de fornecedores diferentes).
+export function buildProductAggregates(records: SalesRecord[]): ProductAggregate[] {
+  interface Draft extends ProductAggregate {
+    unitValueSum: number;
+    unitValueCount: number;
+    orderSet: Set<string>;
+  }
+
+  const map = new Map<string, Draft>();
+
+  for (const r of records || []) {
+    if (!r) continue;
+    const key = `${r.productCode || ""}__${r.productName || "Sem descrição"}`;
+    let p = map.get(key);
+    if (!p) {
+      p = {
+        productCode: r.productCode || "",
+        productName: r.productName || "Sem descrição",
+        supplier: extractSupplier(r),
+        family: extractFamily(r),
+        quantity: 0,
+        fardos: 0,
+        avgUnitValue: 0,
+        grossRevenue: 0,
+        netRevenue: 0,
+        discountTotal: 0,
+        commission: 0,
+        orders: 0,
+        unitValueSum: 0,
+        unitValueCount: 0,
+        orderSet: new Set<string>(),
+      };
+      map.set(key, p);
+    }
+
+    const gross = Number(r.totalValue) || 0;
+    const net = Number(r.netValue) || 0;
+
+    p.quantity += Number(r.quantity) || 0;
+    p.fardos += Number(r.bundleQuantity) || 0;
+    p.grossRevenue += gross;
+    p.netRevenue += net;
+    p.discountTotal += gross - net;
+    p.commission += Number(r.commissionValue) || 0;
+    if (r.unitValue) {
+      p.unitValueSum += Number(r.unitValue) || 0;
+      p.unitValueCount += 1;
+    }
+    p.orderSet.add(getOrderKey(r));
+  }
+
+  return Array.from(map.values()).map((p) => ({
+    productCode: p.productCode,
+    productName: p.productName,
+    supplier: p.supplier,
+    family: p.family,
+    quantity: p.quantity,
+    fardos: p.fardos,
+    avgUnitValue: p.unitValueCount > 0 ? p.unitValueSum / p.unitValueCount : 0,
+    grossRevenue: p.grossRevenue,
+    netRevenue: p.netRevenue,
+    discountTotal: p.discountTotal,
+    commission: p.commission,
+    orders: p.orderSet.size,
+  }));
 }
 
 // Faz UMA única varredura no array de registros já filtrado (período,
 // família, região) e monta todos os cards/gráficos da Home de uma vez.
 // fromStr/toStr (DD/MM/AAAA) são opcionais e servem só pra preencher com
-// zero os dias do período que não tiveram venda, deixando o eixo do
-// gráfico diário contínuo (sem "buracos").
+// zero os dias do período que não tiveram venda no gráfico diário.
 export function buildDashboardAggregates(
   records: SalesRecord[],
   fromStr?: string,
@@ -301,9 +455,14 @@ export function buildDashboardAggregates(
   const families = new Map<string, Accumulator>();
   const regions = new Map<string, Accumulator>();
   const suppliers = new Map<string, SupplierAccumulator>();
-  const groupTotals = new Map<string, { value: number; fardos: number }>();
-  // família -> acumulador, particionado por grupo (pra Top 3 por grupo sem 2ª passagem)
+  const groupTotals = new Map<string, { netRevenue: number; fardos: number }>();
   const familiesByGroupMap = new Map<string, Map<string, Accumulator>>();
+  const products = new Map<string, ReturnType<typeof newAcc> & { productCode: string; productName: string }>();
+
+  let totalNetRevenue = 0;
+  let totalGrossRevenue = 0;
+  let totalCommission = 0;
+  const allOrders = new Set<string>();
 
   for (const r of safeRecords) {
     if (!r) continue;
@@ -316,48 +475,64 @@ export function buildDashboardAggregates(
     const supplier = extractSupplier(r);
     const group = extractGroup(r);
 
-    const revenue = Number(r.totalValue) || 0;
-    const fardos = Number(r.bundleQuantity) || 0;
-    const quantity = Number(r.quantity) || 0;
+    // ---- Colunas oficiais ----
+    const netRevenue = Number(r.netValue) || 0; // VLR_LIQUIDO — faturamento oficial
+    const grossRevenue = Number(r.totalValue) || 0; // VLRTOT — comparativo
+    const commission = Number(r.commissionValue) || 0; // COMISSAO REPR.
+    const fardos = Number(r.bundleQuantity) || 0; // QTDFARD
+    const volume = Number(r.quantity) || 0; // QTDNEG (pacotes)
     const orderKey = getOrderKey(r);
+
+    totalNetRevenue += netRevenue;
+    totalGrossRevenue += grossRevenue;
+    totalCommission += commission;
+    allOrders.add(orderKey);
 
     let m = managers.get(manager);
     if (!m) managers.set(manager, (m = newAcc()));
-    m.revenue += revenue;
+    m.netRevenue += netRevenue;
+    m.grossRevenue += grossRevenue;
+    m.commission += commission;
     m.fardos += fardos;
     m.orders.add(orderKey);
 
     let s = sellers.get(seller);
     if (!s) sellers.set(seller, (s = newAcc()));
-    s.revenue += revenue;
+    s.netRevenue += netRevenue;
+    s.grossRevenue += grossRevenue;
+    s.commission += commission;
     s.fardos += fardos;
-    s.volume += quantity;
+    s.volume += volume;
     s.orders.add(orderKey);
 
     let f = families.get(family);
     if (!f) families.set(family, (f = newAcc()));
-    f.revenue += revenue;
+    f.netRevenue += netRevenue;
+    f.commission += commission;
     f.fardos += fardos;
     f.orders.add(orderKey);
 
     let rg = regions.get(normalizedRegion);
     if (!rg) regions.set(normalizedRegion, (rg = newAcc()));
-    rg.revenue += revenue;
+    rg.netRevenue += netRevenue;
     rg.fardos += fardos;
     rg.orders.add(orderKey);
 
     let sp = suppliers.get(supplier);
     if (!sp) suppliers.set(supplier, (sp = newSupplierAcc()));
-    sp.revenue += revenue;
+    sp.netRevenue += netRevenue;
+    sp.grossRevenue += grossRevenue;
+    sp.commission += commission;
     sp.fardos += fardos;
+    sp.volume += volume;
     sp.orders.add(orderKey);
-    const spRegion = sp.regions.get(region) || { revenue: 0, fardos: 0 };
-    spRegion.revenue += revenue;
+    const spRegion = sp.regions.get(region) || { netRevenue: 0, fardos: 0 };
+    spRegion.netRevenue += netRevenue;
     spRegion.fardos += fardos;
     sp.regions.set(region, spRegion);
 
-    const gTotal = groupTotals.get(group) || { value: 0, fardos: 0 };
-    gTotal.value += revenue;
+    const gTotal = groupTotals.get(group) || { netRevenue: 0, fardos: 0 };
+    gTotal.netRevenue += netRevenue;
     gTotal.fardos += fardos;
     groupTotals.set(group, gTotal);
 
@@ -365,74 +540,91 @@ export function buildDashboardAggregates(
     if (!groupFamilies) familiesByGroupMap.set(group, (groupFamilies = new Map()));
     let gf = groupFamilies.get(family);
     if (!gf) groupFamilies.set(family, (gf = newAcc()));
-    gf.revenue += revenue;
+    gf.netRevenue += netRevenue;
     gf.fardos += fardos;
     gf.orders.add(orderKey);
+
+    const productKey = `${r.productCode || ""}__${r.productName || "Sem descrição"}`;
+    let pr = products.get(productKey);
+    if (!pr) products.set(productKey, (pr = { ...newAcc(), productCode: r.productCode || "", productName: r.productName || "Sem descrição" }));
+    pr.netRevenue += netRevenue;
+    pr.grossRevenue += grossRevenue;
+    pr.commission += commission;
+    pr.fardos += fardos;
+    pr.volume += volume;
+    pr.orders.add(orderKey);
   }
 
-  const topManagers = rankFromMap(managers, "revenue", 5, (name, acc, total) => ({
+  const totalOrders = allOrders.size;
+  const avgTicket = totalOrders > 0 ? totalNetRevenue / totalOrders : 0;
+
+  const topManagers = rankFromMap(managers, "netRevenue", 5, (name, acc, total) => ({
     name,
-    value: formatCurrency(acc.revenue),
+    value: formatCurrency(acc.netRevenue),
     subtitle: `${formatNumber(acc.fardos)} fardos`,
     details: [
-      { label: "Faturamento total", value: formatCurrency(acc.revenue) },
+      { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
+      { label: "Faturamento bruto", value: formatCurrency(acc.grossRevenue) },
+      { label: "Comissão", value: formatCurrency(acc.commission) },
       { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
       { label: "Pedidos", value: `${acc.orders.size}` },
-      { label: "% do faturamento geral", value: `${total > 0 ? ((acc.revenue / total) * 100).toFixed(1) : "0"}%` },
+      { label: "% do faturamento líquido geral", value: formatPercent(total > 0 ? (acc.netRevenue / total) * 100 : 0) },
     ],
   }));
 
   const topSellers = rankFromMap(sellers, "volume", 5, (name, acc, total) => ({
     name,
     value: `${formatNumber(acc.volume)} un.`,
-    subtitle: formatCurrency(acc.revenue),
+    subtitle: formatCurrency(acc.netRevenue),
     details: [
-      { label: "Volume vendido", value: `${formatNumber(acc.volume)} un.` },
-      { label: "Faturamento", value: formatCurrency(acc.revenue) },
+      { label: "Volume vendido (pacotes)", value: `${formatNumber(acc.volume)} un.` },
+      { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
       { label: "Fardos", value: `${formatNumber(acc.fardos)} un.` },
+      { label: "Comissão", value: formatCurrency(acc.commission) },
       { label: "Pedidos", value: `${acc.orders.size}` },
-      { label: "% do volume geral", value: `${total > 0 ? ((acc.volume / total) * 100).toFixed(1) : "0"}%` },
+      { label: "% do volume geral", value: formatPercent(total > 0 ? (acc.volume / total) * 100 : 0) },
     ],
   }));
 
-  // "topProducts": mantém o nome do campo por compatibilidade, mas agora
-  // representa as FAMÍLIAS campeãs (coluna FAMILIA da planilha).
+  // "topProducts": ranking simples por família, mantido só por
+  // compatibilidade com a tela de Importação (a Home não exibe mais isso —
+  // ver ProductsTable, que agrupa por descrição do produto).
   const topProducts = rankFromMap(families, "fardos", 5, (name, acc, total) => ({
     name,
     value: `${formatNumber(acc.fardos)} Fardos`,
-    subtitle: formatCurrency(acc.revenue),
+    subtitle: formatCurrency(acc.netRevenue),
     details: [
       { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
-      { label: "Faturamento", value: formatCurrency(acc.revenue) },
+      { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
+      { label: "Comissão", value: formatCurrency(acc.commission) },
       { label: "Pedidos", value: `${acc.orders.size}` },
-      { label: "% do total de fardos", value: `${total > 0 ? ((acc.fardos / total) * 100).toFixed(1) : "0"}%` },
+      { label: "% do total de fardos", value: formatPercent(total > 0 ? (acc.fardos / total) * 100 : 0) },
     ],
   }));
 
-  const topRegions = rankFromMap(regions, "revenue", 8, (name, acc, total) => ({
+  const topRegions = rankFromMap(regions, "netRevenue", 8, (name, acc, total) => ({
     name,
     subtitle: `${acc.orders.size.toLocaleString("pt-BR")} pedidos`,
-    value: formatCurrency(acc.revenue),
+    value: formatCurrency(acc.netRevenue),
     details: [
-      { label: "Faturamento", value: formatCurrency(acc.revenue) },
+      { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
       { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
       { label: "Pedidos", value: `${acc.orders.size}` },
-      { label: "% do faturamento geral", value: `${total > 0 ? ((acc.revenue / total) * 100).toFixed(1) : "0"}%` },
+      { label: "% do faturamento líquido geral", value: formatPercent(total > 0 ? (acc.netRevenue / total) * 100 : 0) },
     ],
   }));
 
-  // Fornecedores: além de fardos/faturamento/pedidos/%, mostra qual região
-  // mais compra daquele fornecedor (por faturamento), com a quantidade de
-  // fardos e o faturamento gerado especificamente naquela região.
+  // Fornecedores: ranking existente (ordenado por fardos), agora com
+  // faturamento líquido/bruto e comissão + região que mais compra.
   const supplierTotalFardos = Array.from(suppliers.values()).reduce((sum, a) => sum + a.fardos, 0);
   const topSuppliers: RankingItem[] = Array.from(suppliers.entries())
     .sort((a, b) => b[1].fardos - a[1].fardos)
     .slice(0, 8)
     .map(([name, acc], index) => {
       let topRegionName = "Sem região";
-      let topRegionData: RegionBreakdown = { revenue: 0, fardos: 0 };
+      let topRegionData: RegionBreakdown = { netRevenue: 0, fardos: 0 };
       for (const [regionName, regionData] of acc.regions.entries()) {
-        if (regionData.revenue > topRegionData.revenue) {
+        if (regionData.netRevenue > topRegionData.netRevenue) {
           topRegionName = regionName || "Sem região";
           topRegionData = regionData;
         }
@@ -445,46 +637,90 @@ export function buildDashboardAggregates(
         value: `${formatNumber(acc.fardos)} Fardos`,
         details: [
           { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
-          { label: "Faturamento", value: formatCurrency(acc.revenue) },
+          { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
+          { label: "Faturamento bruto", value: formatCurrency(acc.grossRevenue) },
+          { label: "Comissão", value: formatCurrency(acc.commission) },
           { label: "Pedidos com este fornecedor", value: `${acc.orders.size}` },
           {
             label: "% do total de fardos",
-            value: `${supplierTotalFardos > 0 ? ((acc.fardos / supplierTotalFardos) * 100).toFixed(1) : "0"}%`,
+            value: formatPercent(supplierTotalFardos > 0 ? (acc.fardos / supplierTotalFardos) * 100 : 0),
           },
           { label: "Região que mais compra", value: topRegionName },
           { label: "Fardos vendidos nessa região", value: `${formatNumber(topRegionData.fardos)} un.` },
-          { label: "Faturamento nessa região", value: formatCurrency(topRegionData.revenue) },
+          { label: "Faturamento líquido nessa região", value: formatCurrency(topRegionData.netRevenue) },
         ],
       };
     });
 
+  // Comissão por fornecedor — indicador próprio pedido explicitamente.
+  const commissionBySupplier = rankFromMap(
+    // reaproveita o mapa de fornecedores (já tem commission), só precisa
+    // encaixar no formato Accumulator simples
+    new Map(Array.from(suppliers.entries()).map(([name, acc]) => [name, acc as Accumulator])),
+    "commission",
+    8,
+    (name, acc, total) => ({
+      name,
+      value: formatCurrency(acc.commission),
+      subtitle: formatCurrency(acc.netRevenue),
+      details: [
+        { label: "Comissão", value: formatCurrency(acc.commission) },
+        { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
+        { label: "Pedidos", value: `${acc.orders.size}` },
+        { label: "% da comissão total", value: formatPercent(total > 0 ? (acc.commission / total) * 100 : 0) },
+      ],
+    })
+  );
+
   const groupColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b", "#334155"];
   const groupSalesData: GroupSalesData[] = Array.from(groupTotals.entries())
-    .sort((a, b) => b[1].value - a[1].value)
-    .map(([name, t], i) => ({ name, value: t.value, fardos: t.fardos, color: groupColors[i % groupColors.length] }));
+    .sort((a, b) => b[1].netRevenue - a[1].netRevenue)
+    .map(([name, t], i) => ({
+      name,
+      value: t.netRevenue,
+      fardos: t.fardos,
+      color: groupColors[i % groupColors.length],
+    }));
 
   const productsByGroup: Record<string, RankingItem[]> = {};
   for (const [group, groupFamilies] of familiesByGroupMap.entries()) {
     productsByGroup[group] = rankFromMap(groupFamilies, "fardos", 3, (name, acc, total) => ({
       name,
       value: `${formatNumber(acc.fardos)} Fardos`,
-      subtitle: formatCurrency(acc.revenue),
+      subtitle: formatCurrency(acc.netRevenue),
       details: [
         { label: "Fardos vendidos", value: `${formatNumber(acc.fardos)} un.` },
-        { label: "Faturamento", value: formatCurrency(acc.revenue) },
+        { label: "Faturamento líquido", value: formatCurrency(acc.netRevenue) },
         { label: "Pedidos", value: `${acc.orders.size}` },
-        { label: "% dentro do grupo", value: `${total > 0 ? ((acc.fardos / total) * 100).toFixed(1) : "0"}%` },
+        { label: "% dentro do grupo", value: formatPercent(total > 0 ? (acc.fardos / total) * 100 : 0) },
       ],
     }));
   }
 
-  // Gráfico "Faturamento Total de Mercadorias": total de fardos vendidos +
-  // faturamento, dia a dia. Preenche com zero os dias do período sem venda
-  // pra o eixo ficar contínuo. Reage ao filtro de família/região porque
-  // `records` já chega filtrado do page.tsx.
   const dailyTotals = buildDailyMap(safeRecords, fromStr, toStr);
 
+  // Agregado por descrição de produto (tabela pesquisável/ordenável).
+  const productAggregates: ProductAggregate[] = buildProductAggregates(safeRecords);
+
+  // Agregado por fornecedor (novo gráfico exclusivo, com toggle de
+  // ordenação no componente).
+  const supplierAggregates: SupplierAggregate[] = Array.from(suppliers.entries()).map(([name, acc]) => ({
+    name,
+    netRevenue: acc.netRevenue,
+    grossRevenue: acc.grossRevenue,
+    quantity: acc.volume,
+    fardos: acc.fardos,
+    commission: acc.commission,
+    orders: acc.orders.size,
+    participation: totalNetRevenue > 0 ? (acc.netRevenue / totalNetRevenue) * 100 : 0,
+  }));
+
   return {
+    totalNetRevenue,
+    totalGrossRevenue,
+    totalCommission,
+    totalOrders,
+    avgTicket,
     topManagers,
     topSellers,
     topProducts,
@@ -493,5 +729,8 @@ export function buildDashboardAggregates(
     groupSalesData,
     topRegions,
     topSuppliers,
+    productAggregates,
+    supplierAggregates,
+    commissionBySupplier,
   };
 }

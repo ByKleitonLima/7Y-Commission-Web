@@ -3,16 +3,17 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import DateRangeFilter from "@/components/dateRangeFilter";
 import RefreshButton from "@/components/refreshButton";
-import TopRankingCard from "@/components/groupProducts";
-import GroupSalesPieChart from "@/components/topRankCard";
+import StatCard from "@/components/statCard";
+import TopRankingCard from "@/components/topRankCard";
 import DailySalesChart from "@/components/graphic";
+import GroupSalesPieChart from "@/components/groupProducts";
+import SupplierRankingTable from "@/components/supplierRankingTable";
 import { useSalesData } from "@/context/salesDataContext";
 import { Loader2 } from "lucide-react";
 import {
     buildDashboardAggregates,
     buildDailyTotals,
     filterSaleOrders,
-    getSortedGroups,
     getSortedFamilies,
     getSortedRegions,
     extractFamily,
@@ -42,7 +43,7 @@ function readSavedRange(): { from: string; to: string } {
             if (parsed?.from && parsed?.to) return parsed;
         }
     } catch {
-        return getDefaultRange();
+        // ignora JSON inválido e usa o padrão
     }
     return getDefaultRange();
 }
@@ -58,7 +59,7 @@ export default function Home() {
         try {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(dateRange));
         } catch {
-            return;
+            // localStorage indisponível
         }
     }, [dateRange]);
 
@@ -66,6 +67,7 @@ export default function Home() {
         setDateRange({ from, to });
     }, []);
 
+    // Relatórios da Home consideram só pedidos de venda de fato.
     const saleOrderRecords = useMemo(() => filterSaleOrders(records || []), [records]);
 
     const recordsInRange = useMemo(
@@ -76,6 +78,7 @@ export default function Home() {
     const familyOptions = useMemo(() => getSortedFamilies(recordsInRange), [recordsInRange]);
     const regionOptions = useMemo(() => getSortedRegions(recordsInRange), [recordsInRange]);
 
+    // ---- Sequência de filtragem: período -> família -> região ----
     const filteredRecords = useMemo(() => {
         if (selectedFamily === ALL_FAMILIES && selectedRegion === ALL_REGIONS) return recordsInRange;
         return recordsInRange.filter((record) => {
@@ -92,6 +95,12 @@ export default function Home() {
         [filteredRecords, dateRange]
     );
 
+    // Soma do total de fardos vendidos
+    const totalBundles = useMemo(() => {
+        return filteredRecords.reduce((acc, item) => acc + (item.bundleQuantity || item.quantity || 0), 0);
+    }, [filteredRecords]);
+
+    // Filtro independente só do gráfico "Faturamento Total de Mercadorias".
     const chartRecords = useMemo(() => {
         if (chartFamily === ALL_FAMILIES) return filteredRecords;
         return filteredRecords.filter(
@@ -103,12 +112,6 @@ export default function Home() {
         () => buildDailyTotals(chartRecords, dateRange.from, dateRange.to),
         [chartRecords, dateRange]
     );
-
-    const availableGroups = useMemo(() => getSortedGroups(filteredRecords), [filteredRecords]);
-    const group1Name = availableGroups[0] || "Grupo 1";
-    const group2Name = availableGroups[1] || "Grupo 2";
-    const topFamiliesGroup1 = aggregates.productsByGroup[group1Name] || [];
-    const topFamiliesGroup2 = aggregates.productsByGroup[group2Name] || [];
 
     const hasData = filteredRecords.length > 0;
 
@@ -174,16 +177,26 @@ export default function Home() {
             )}
 
             {hasData && (
-                <div className="space-y-8">
-                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-3">
-                        <TopRankingCard title="Gerentes com Maior Faturamento" items={aggregates.topManagers} />
-                        <TopRankingCard title="Vendedores com Maior Volume de Vendas" items={aggregates.topSellers} />
-                        <TopRankingCard title="Famílias Campeãs de Vendas (Fardos)" items={aggregates.topProducts} />
+                <div className="space-y-16">
+                    <div className="flex flex-wrap gap-6">
+                        <StatCard
+                            label="Receita Líquida"
+                            value={aggregates.totalNetRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        />
+                        <StatCard
+                            label="Receita Bruta"
+                            value={aggregates.totalGrossRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        />
+                        <StatCard
+                            label="Total de fardos vendidos"
+                            value={totalBundles.toLocaleString("pt-BR")}
+                        />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
-                        <TopRankingCard title={`Top 3 Famílias - ${group1Name}`} items={topFamiliesGroup1} />
-                        <TopRankingCard title={`Top 3 Famílias - ${group2Name}`} items={topFamiliesGroup2} />
+                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-3">
+                        <TopRankingCard title="Gerentes com Maior Faturamento Líquido" items={aggregates.topManagers} />
+                        <TopRankingCard title="Vendedores com Maior Volume (Pacotes)" items={aggregates.topSellers} />
+                        <TopRankingCard title="Regiões com Maior Faturamento Líquido" items={aggregates.topRegions} />
                     </div>
 
                     <div>
@@ -204,17 +217,19 @@ export default function Home() {
                                 </select>
                             </div>
                         </div>
-                        <DailySalesChart title="Faturamento Total de Mercadorias" data={dailyTotalsForChart} />
+                        <DailySalesChart title="Evolução do Faturamento Líquido" data={dailyTotalsForChart} />
                     </div>
 
                     <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
-                        <GroupSalesPieChart title="Faturamento por Grupos (R$)" data={aggregates.groupSalesData} />
-                        <TopRankingCard title="Vendas por Região (Faturamento)" items={aggregates.topRegions} />
+                        <GroupSalesPieChart title="Faturamento Líquido por Grupos (R$)" data={aggregates.groupSalesData} />
+                        <TopRankingCard title="Comissão por Fornecedor" items={aggregates.commissionBySupplier} />
                     </div>
 
                     <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
                         <TopRankingCard title="Vendas por Fornecedor (Fardos)" items={aggregates.topSuppliers} />
                     </div>
+
+                    <SupplierRankingTable suppliers={aggregates.supplierAggregates} />
                 </div>
             )}
         </div>

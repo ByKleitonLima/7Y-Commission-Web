@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, ChangeEvent, useEffect } from "react";
-import { Upload, FileSpreadsheet, CheckCircle2, Database, History, User, Calendar, Trash2, Loader2 } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, Database, History, User, Calendar, Trash2, Loader2, AlertTriangle, X } from "lucide-react";
 import { useSalesData } from "@/context/salesDataContext";
 import { parseSalesFile } from "@/lib/parseSalesFile";
 import {
@@ -13,29 +13,14 @@ import {
 } from "@/services/salesService";
 import UploadLoader from "@/components/uploadLoader";
 import { useAuth } from "@/context/AuthContext";
-import TopRankingCard from "@/components/topRankCard";
-import { buildDashboardAggregates } from "@/lib/salesAggregations";
 import type { SalesRecord } from "@/context/salesDataContext";
 
-// ATENÇÃO: precisa bater com o mesmo valor usado em getAuthenticatedAdmin
-// (src/lib/verifyAuth.ts). Se no seu Firestore o campo "role" usa outro
-// texto (ex: "Administrador"), ajuste os dois lugares juntos.
-const ADMIN_ROLE = "Admin";
-
-// Mesma chave usada no upsert do banco (services/salesService.ts): o
-// NR_ÚNICO da planilha é o número do PEDIDO, não da linha — um pedido tem
-// em média ~5 produtos com o mesmo NR_ÚNICO. Usar só o NR_ÚNICO como chave
-// (como era antes) faz esse dedupe local descartar quase todos os produtos
-// de cada pedido, mantendo só o primeiro. A chave real de uma linha é
-// pedido + produto.
 function getRecordKey(r: SalesRecord): string {
     const order = r.uniqueNumber?.trim();
     if (order) return `${order}-${r.productCode}-${r.totalValue}`;
     return `${r.productCode}-${r.issueDate}-${r.totalValue}`;
 }
 
-// Remove linhas duplicadas dentro do próprio arquivo importado, antes de
-// mandar qualquer coisa pro banco.
 function dedupeRecords(records: SalesRecord[]): SalesRecord[] {
     const seen = new Set<string>();
     const result: SalesRecord[] = [];
@@ -51,8 +36,7 @@ function dedupeRecords(records: SalesRecord[]): SalesRecord[] {
 }
 
 export default function ImportPage() {
-    const { user, name, role } = useAuth();
-    const isAdmin = role === ADMIN_ROLE;
+    const { user, name } = useAuth();
 
     const { records, setRecords, fileName, setFileName, refresh } = useSalesData();
     const [isProcessing, setProcessing] = useState(false);
@@ -67,6 +51,10 @@ export default function ImportPage() {
 
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
+
+    // Estados para o Modal de Confirmação e o Popup/Toast de Sucesso
+    const [itemToDelete, setItemToDelete] = useState<{ id: string; fileName: string } | null>(null);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const userDisplayName = name || user?.email?.split("@")[0] || "Usuário";
 
@@ -83,6 +71,16 @@ export default function ImportPage() {
         loadHistory();
     }, []);
 
+    // Esconde o popup de confirmação após 4 segundos
+    useEffect(() => {
+        if (toastMessage) {
+            const timer = setTimeout(() => {
+                setToastMessage(null);
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastMessage]);
+
     const metrics = useMemo(() => {
         if (records.length === 0) return null;
 
@@ -91,16 +89,11 @@ export default function ImportPage() {
         const uniqueSellers = new Set(records.map((r) => r.sellerName)).size;
         const uniqueClients = new Set(records.map((r) => r.clientName)).size;
 
-        const aggregates = buildDashboardAggregates(records);
-
         return {
             totalValue,
             uniqueManagers,
             uniqueSellers,
             uniqueClients,
-            topManagers: aggregates.topManagers.slice(0, 3),
-            topSellers: aggregates.topSellers.slice(0, 3),
-            topProducts: aggregates.topProducts.slice(0, 3),
         };
     }, [records]);
 
@@ -141,10 +134,6 @@ export default function ImportPage() {
         try {
             const totalValue = records.reduce((sum, r) => sum + r.totalValue, 0);
 
-            // Cria o registro de histórico ANTES de enviar as vendas, porque
-            // precisamos do id gerado para marcar cada sales_record com
-            // upload_id — é esse vínculo que permite excluir a importação
-            // inteira depois (ver botão de lixeira na tabela de histórico).
             const historyEntry = await saveUploadHistory({
                 fileName,
                 rowCount: records.length,
@@ -158,15 +147,10 @@ export default function ImportPage() {
                 );
             }
 
-            // uploadSalesRecordsInBatches faz upsert por (unique_number,
-            // product_code), então reenviar linhas já existentes atualiza em
-            // vez de duplicar.
             await uploadSalesRecordsInBatches(records, historyEntry.id, (sent, total) => {
                 setSaveProgress({ done: sent, total });
             });
 
-            // Deriva e sincroniza gerentes / vendedores / clientes a partir
-            // dos registros dessa importação.
             await syncOrganizationFromRecords(records);
 
             setIsSuccess(true);
@@ -186,27 +170,27 @@ export default function ImportPage() {
         }
     };
 
-    const handleDeleteUpload = async (item: { id: string; fileName: string }) => {
-        if (!isAdmin) return;
+    // Abre o modal de confirmação ao clicar no botão da lixeira
+    const openDeleteModal = (item: { id: string; fileName: string }) => {
+        setItemToDelete(item);
+    };
 
-        const confirmed = window.confirm(
-            `Tem certeza que deseja excluir a importação "${item.fileName}"?\n\n` +
-            "Isso vai apagar PERMANENTEMENTE todas as vendas que vieram desse envio, " +
-            "em todos os Dashboards. Essa ação não pode ser desfeita."
-        );
-        if (!confirmed) return;
+    // Executa a exclusão após o usuário confirmar no Modal
+    const handleConfirmDelete = async () => {
+        if (!itemToDelete) return;
 
-        setDeletingId(item.id);
+        const target = itemToDelete;
+        setItemToDelete(null); // Fecha o modal
+        setDeletingId(target.id);
         setDeleteError(null);
 
         try {
-            await deleteUploadHistoryEntry(item.id);
+            await deleteUploadHistoryEntry(target.id);
             await loadHistory();
-            // Os dados de vendas usados no Dashboard/Gerentes/Vendedores/
-            // Clientes vêm do SalesDataProvider (contexto global) — depois
-            // de excluir no banco, força recarregar pra refletir em todo o
-            // app sem precisar dar F5.
             await refresh();
+
+            // Exibe o popup/toast informando que a operação foi concluída
+            setToastMessage(`A importação "${target.fileName}" foi removida com sucesso.`);
         } catch (err: any) {
             console.error("Erro ao excluir importação:", err);
             setDeleteError(err.message || "Não foi possível excluir essa importação.");
@@ -216,11 +200,64 @@ export default function ImportPage() {
     };
 
     return (
-        <div className="pb-12">
+        <div className="pb-12 relative">
             <UploadLoader
                 isLoading={isSaving}
                 progress={{ sent: saveProgress.done, total: saveProgress.total }}
             />
+
+            {/* POPUP / TOAST DE NOTIFICAÇÃO (Exibido após excluir) */}
+            {toastMessage && (
+                <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-gray-900 px-5 py-4 text-white shadow-2xl border border-gray-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                    <p className="text-sm font-medium">{toastMessage}</p>
+                    <button
+                        onClick={() => setToastMessage(null)}
+                        className="ml-2 rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
+
+            {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+            {itemToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-gray-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 text-amber-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Excluir Importação</h3>
+                        </div>
+
+                        <p className="mt-4 text-sm text-gray-600 leading-relaxed">
+                            Tem certeza que deseja cancelar e excluir a planilha{" "}
+                            <strong className="text-gray-900">{itemToDelete.fileName}</strong>?
+                        </p>
+                        <p className="mt-2 text-xs text-red-500 font-medium bg-red-50 p-2.5 rounded-lg border border-red-100">
+                            Atenção: Isso irá remover permanentemente todas as vendas vinculadas a este arquivo em todos os dashboards.
+                        </p>
+
+                        <div className="mt-6 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setItemToDelete(null)}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                                Não, manter
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDelete}
+                                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors shadow-sm"
+                            >
+                                Sim, excluir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
                 <Upload className="mx-auto h-8 w-8 text-gray-400" strokeWidth={1.5} />
@@ -328,12 +365,6 @@ export default function ImportPage() {
                         </div>
                     </div>
 
-                    <div className="mt-8 flex flex-col gap-6 lg:flex-row">
-                        <TopRankingCard title="Top Gerentes na Planilha" items={metrics.topManagers} />
-                        <TopRankingCard title="Top Vendedores na Planilha" items={metrics.topSellers} />
-                        <TopRankingCard title="Produtos Campeões na Planilha" items={metrics.topProducts} />
-                    </div>
-
                     {isSuccess && !isSaving && (
                         <div className="mt-6 flex items-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 p-4 rounded-xl">
                             <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
@@ -370,7 +401,7 @@ export default function ImportPage() {
                                 <th className="px-6 py-3">Registros</th>
                                 <th className="px-6 py-3">Faturamento</th>
                                 <th className="px-6 py-3">Enviado Por</th>
-                                {isAdmin && <th className="px-6 py-3">Ações</th>}
+                                <th className="px-6 py-3">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -394,27 +425,25 @@ export default function ImportPage() {
                                             {item.uploadedBy}
                                         </span>
                                     </td>
-                                    {isAdmin && (
-                                        <td className="px-6 py-4">
-                                            <button
-                                                onClick={() => handleDeleteUpload(item)}
-                                                disabled={deletingId === item.id}
-                                                title="Excluir esta importação e as vendas vinculadas"
-                                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                            >
-                                                {deletingId === item.id ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-                                                ) : (
-                                                    <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                                                )}
-                                            </button>
-                                        </td>
-                                    )}
+                                    <td className="px-6 py-4">
+                                        <button
+                                            onClick={() => openDeleteModal(item)}
+                                            disabled={deletingId === item.id}
+                                            title="Excluir esta importação e as vendas vinculadas"
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                        >
+                                            {deletingId === item.id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                                            ) : (
+                                                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                            )}
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                             {history.length === 0 && (
                                 <tr>
-                                    <td colSpan={isAdmin ? 6 : 5} className="px-6 py-10 text-center text-sm text-gray-400">
+                                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
                                         Nenhum envio registrado até o momento.
                                     </td>
                                 </tr>

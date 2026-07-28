@@ -26,10 +26,7 @@ function toDateString(value: unknown): string {
   return String(value ?? "");
 }
 
-// Colunas que o parser espera encontrar (já normalizadas: sem acento, sem
-// espaço duplo, maiúsculas). Usado só pra diagnóstico — se algo aqui não
-// bater com o header real da planilha, esse campo específico vai vir
-// vazio/zerado no preview e o console avisa qual é.
+// Colunas que o parser espera encontrar
 const REQUIRED_KEYS = [
   "ID_SUPERVISOR", "GERENTE", "PARCEIRO", "CODVEN", "VENDEDOR", "REDE",
   "CODPARC", "NOMEPARC", "EMISSAO", "NR_UNICO", "REF PEDIDO", "FORNECEDOR",
@@ -39,14 +36,6 @@ const REQUIRED_KEYS = [
   "CODGRUPO", "REGPROMO", "VLRPROMO", "GRUPO", "FAMILIA",
 ];
 
-// Algumas exportações do relatório de origem repetem a linha de cabeçalho
-// no meio dos dados (uma vez por "página" do relatório original). Essas
-// linhas trazem o próprio nome da coluna como valor — ex: a coluna
-// ID_SUPERVISOR contém literalmente o texto "ID_SUPERVISOR". Se isso não
-// for filtrado, cada ocorrência vira um gerente/vendedor/cliente fantasma
-// nas telas de Gerentes, Vendedores e Clientes (com nome "GERENTE",
-// "VENDEDOR", "NOMEPARC" etc.), porque o parser não tem como distinguir
-// esse texto de um dado real.
 const HEADER_ECHO_MARKERS = ["ID_SUPERVISOR", "CODVEN", "CODPARC", "NR_UNICO"];
 
 function isHeaderEchoRow(normalized: Record<string, unknown>): boolean {
@@ -57,13 +46,19 @@ function isHeaderEchoRow(normalized: Record<string, unknown>): boolean {
 
 export async function parseSalesFile(file: File): Promise<SalesRecord[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  
+  // CORREÇÃO: Converter o ArrayBuffer para Uint8Array resolve o erro "TypeError: Cannot set properties of undefined (setting 'name')"
+  const data = new Uint8Array(buffer);
+  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error("A planilha enviada está vazia ou é inválida.");
+  }
+
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
 
-  // Diagnóstico: roda uma vez por importação, olhando só a primeira linha,
-  // pra apontar no console quais colunas esperadas não foram achadas na
-  // planilha (provável causa de campos vindo errados/vazios no preview).
+  // Diagnóstico
   if (rawRows.length > 0) {
     const foundKeys = new Set(Object.keys(rawRows[0]).map(normalizeKey));
     const missing = REQUIRED_KEYS.filter((k) => !foundKeys.has(k));
@@ -91,7 +86,7 @@ export async function parseSalesFile(file: File): Promise<SalesRecord[]> {
   const headerEchoCount = normalizedRows.length - validRows.length;
   if (headerEchoCount > 0) {
     console.warn(
-      `[parseSalesFile] ${headerEchoCount} linha(s) de cabeçalho repetido dentro dos dados foram descartadas (artefato de paginação da planilha de origem).`
+      `[parseSalesFile] ${headerEchoCount} linha(s) de cabeçalho repetido dentro dos dados foram descartadas.`
     );
   }
 
