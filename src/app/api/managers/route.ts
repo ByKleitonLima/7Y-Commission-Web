@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { supId, code, name, sellersCount, ordersCount, status } = body;
+  const { supId, code, name, cpf, phone, email, role, sellersCount, ordersCount, status, photoUrl } = body;
 
   if (!name) {
     return NextResponse.json({ error: "Nome é obrigatório." }, { status: 400 });
@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
         supervisor_id: supId || null,
         code: code || null,
         name,
+        cpf: cpf || null,
+        phone: phone || null,
+        email: email || null,
+        role: role || null,
+        photo_url: photoUrl || null,
         sellers_count: sellersCount ?? 0,
         orders_count: ordersCount ?? 0,
         status: status ?? "Ativo",
@@ -43,6 +48,11 @@ export async function POST(req: NextRequest) {
     supId: data.supervisor_id,
     code: data.code,
     name: data.name,
+    cpf: data.cpf,
+    phone: data.phone,
+    email: data.email,
+    role: data.role,
+    photoUrl: data.photo_url,
     sellersCount: data.sellers_count,
     ordersCount: data.orders_count,
     status: data.status,

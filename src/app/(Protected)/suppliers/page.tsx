@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { UserPlus, Upload } from "lucide-react";
 import StatCard from "@/components/statCard";
-import SuppliersTable, { Supplier } from "@/components/addSupplierModal";
+import SuppliersTable, { Supplier } from "@/components/suppliersTable";
 import AddSupplierModal from "@/components/addSupplierModal";
 import UploadLoader from "@/components/uploadLoader";
 import RefreshButton from "@/components/refreshButton";
@@ -13,17 +13,14 @@ import { useOrgData } from "@/context/orgDataContext";
 import * as XLSX from "xlsx";
 
 export default function Suppliers() {
-    // Assumindo que você adicione suppliers no seu OrgDataContext, 
-    // ou você pode gerenciar com um useState/useEffect local de suppliers.
-    const { suppliers, isLoading, refresh } = useOrgData(); 
-    
+    const { suppliers, isLoading, refresh } = useOrgData();
+
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [progress, setProgress] = useState({ sent: 0, total: 0 });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Métrica dos StatCards adaptados
     const total = suppliers.length;
     const active = suppliers.filter((s) => s.status === "Ativo").length;
     const inactive = suppliers.filter((s) => s.status === "Inativo").length;
@@ -178,7 +175,6 @@ export default function Suppliers() {
                 </button>
             </div>
 
-            {/* StatCards com a ordem e labels solicitadas */}
             <div className="mt-6 flex gap-6">
                 <StatCard label="Total de fornecedores" value={total} />
                 <StatCard label="Ativos" value={active} />

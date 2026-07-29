@@ -15,6 +15,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.supId !== undefined) updateData.supervisor_id = body.supId || null;
   if (body.code !== undefined) updateData.code = body.code;
   if (body.name !== undefined) updateData.name = body.name;
+  if (body.cpf !== undefined) updateData.cpf = body.cpf || null;
+  if (body.phone !== undefined) updateData.phone = body.phone || null;
+  if (body.email !== undefined) updateData.email = body.email || null;
+  if (body.role !== undefined) updateData.role = body.role || null;
+  if (body.photoUrl !== undefined) updateData.photo_url = body.photoUrl || null;
   if (body.status !== undefined) updateData.status = body.status;
 
   const { error } = await supabaseAdmin.from("managers").update(updateData).eq("id", params.id);

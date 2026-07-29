@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Pencil, Trash2, SlidersHorizontal } from "lucide-react";
+import { Search, Pencil, Trash2, SlidersHorizontal, User } from "lucide-react";
 import StatusBadge from "@/components/statusBadge";
 import Modal from "@/components/modal";
 
@@ -10,6 +10,11 @@ export interface SalesManager {
     supId: string;
     code: string;
     name: string;
+    cpf?: string;
+    phone?: string;
+    email?: string;
+    role?: string;
+    photoUrl?: string;
     sellersCount: number;
     ordersCount: number;
     status: "Ativo" | "Inativo";
@@ -68,7 +73,7 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
     };
 
     const filtered = managers.filter((m) => {
-        const matchesSearch = `${m.name || ""} ${m.code || ""} ${m.supId || ""}`
+        const matchesSearch = `${m.name || ""} ${m.code || ""} ${m.supId || ""} ${m.email || ""} ${m.cpf || ""}`
             .toLowerCase()
             .includes(search.toLowerCase());
 
@@ -97,7 +102,7 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar por nome, id ou código do gerente..."
+                        placeholder="Buscar por nome, id, código, e-mail ou CPF..."
                         className="w-full bg-transparent text-sm text-[#2d2d2d] outline-none placeholder:text-gray-400"
                     />
                 </div>
@@ -123,6 +128,8 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
                         <th className="px-4 py-3 font-medium">ID Sup</th>
                         <th className="px-4 py-3 font-medium">Código</th>
                         <th className="px-4 py-3 font-medium">Nome</th>
+                        <th className="px-4 py-3 font-medium">Cargo</th>
+                        <th className="px-4 py-3 font-medium">Contato</th>
                         <th className="px-4 py-3 font-medium">Vendedores</th>
                         <th className="px-4 py-3 font-medium">Pedidos</th>
                         <th className="px-4 py-3 font-medium">Status</th>
@@ -134,7 +141,25 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
                         <tr key={manager.id} className="border-b border-gray-50 last:border-0">
                             <td className="px-4 py-3 text-gray-500">{manager.supId}</td>
                             <td className="px-4 py-3 text-gray-500">{manager.code}</td>
-                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">{manager.name}</td>
+                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
+                                        {manager.photoUrl ? (
+                                            <img src={manager.photoUrl} alt={manager.name} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <User className="h-4 w-4 text-gray-400" strokeWidth={1.75} />
+                                        )}
+                                    </div>
+                                    {manager.name}
+                                </div>
+                            </td>
+                            <td className="px-4 py-3 text-gray-500">{manager.role || "-"}</td>
+                            <td className="px-4 py-3 text-gray-500">
+                                <div className="flex flex-col text-xs">
+                                    <span>{manager.email || "-"}</span>
+                                    <span>{manager.phone || "-"}</span>
+                                </div>
+                            </td>
                             <td className="px-4 py-3 text-gray-500">{Number(manager.sellersCount) || 0}</td>
                             <td className="px-4 py-3 text-gray-500">{Number(manager.ordersCount) || 0}</td>
                             <td className="px-4 py-3">
@@ -164,7 +189,7 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
 
                     {filtered.length === 0 && (
                         <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                            <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
                                 Nenhum gerente encontrado.
                             </td>
                         </tr>
