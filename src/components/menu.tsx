@@ -8,6 +8,8 @@ import {
     UserCog,
     Users,
     Truck,
+    Package,
+    Boxes,
     Upload,
     LogOut,
 } from "lucide-react";
@@ -19,6 +21,8 @@ export const NAV_ITEMS = [
     { label: "Gerentes", href: "/managers", icon: UserCog, pageTitle: "Gerentes de vendas" },
     { label: "Vendedores", href: "/sellers", icon: Users, pageTitle: "Vendedores" },
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
+    { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
+    { label: "Produtos", href: "/products", icon: Boxes, pageTitle: "Produtos" },
     { label: "Importar", href: "/import", icon: Upload, pageTitle: "Importar planilha de comissão" },
 ];
 

@@ -100,7 +100,7 @@ export default function SupplierRankingTable({ suppliers }: SupplierRankingTable
                     <thead>
                         <tr className="border-b border-gray-100 text-gray-500">
                             <th className="px-4 py-3 font-medium">Fornecedor</th>
-                            <th className="px-4 py-3 font-medium">Região</th>
+                            <th className="px-4 py-3 font-medium">Regiões líderes em compras</th>
                             {COLUMNS.map((c) => (
                                 <th key={c.key} className="px-4 py-3 font-medium">
                                     <button

@@ -116,13 +116,13 @@ export default function Home() {
 
             <div className="flex flex-wrap items-end gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Família</label>
+                    <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Grupos</label>
                     <select
                         value={selectedFamily}
                         onChange={(e) => setSelectedFamily(e.target.value)}
                         className="h-10 max-w-[220px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                     >
-                        <option value={ALL_FAMILIES}>Todas as famílias</option>
+                        <option value={ALL_FAMILIES}>Todas mercadorias</option>
                         {familyOptions.map((f) => (
                             <option key={f} value={f}>{f}</option>
                         ))}
@@ -130,7 +130,7 @@ export default function Home() {
                 </div>
 
                 <div>
-                    <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Região</label>
+                    <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Regiões</label>
                     <select
                         value={selectedRegion}
                         onChange={(e) => setSelectedRegion(e.target.value)}
@@ -196,14 +196,14 @@ export default function Home() {
                         <div className="flex flex-wrap items-end justify-end gap-3">
                             <div>
                                 <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">
-                                    Família do gráfico
+                                    Grupo
                                 </label>
                                 <select
                                     value={chartFamily}
                                     onChange={(e) => setChartFamily(e.target.value)}
                                     className="h-10 max-w-[240px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                                 >
-                                    <option value={ALL_FAMILIES}>Todas as famílias</option>
+                                    <option value={ALL_FAMILIES}>Todas mercadorias</option>
                                     {familyOptions.map((f) => (
                                         <option key={f} value={f}>{f}</option>
                                     ))}

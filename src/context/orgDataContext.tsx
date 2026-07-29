@@ -2,14 +2,17 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { fetchManagers, fetchSellers, fetchClients } from "@/services/salesService";
+import { fetchSuppliers } from "@/services/supplierService";
 import { SalesManager } from "@/components/managerStable";
 import { Seller } from "@/components/sellersStable";
 import { Client } from "@/components/clientsStable";
+import { Supplier } from "@/components/suppliersTable";
 
 interface OrgDataContextType {
     managers: SalesManager[];
     sellers: Seller[];
     clients: Client[];
+    suppliers: Supplier[];
     isLoading: boolean;
     hasLoaded: boolean;
     refresh: () => Promise<void>;
@@ -17,18 +20,14 @@ interface OrgDataContextType {
 
 const OrgDataContext = createContext<OrgDataContextType | undefined>(undefined);
 
-// Carrega Gerentes/Vendedores/Clientes UMA vez quando o usuário entra no
-// site (igual o SalesDataProvider já faz com as vendas). Navegar entre as
-// telas não dispara nova busca — só o botão "Atualizar" chama refresh().
 export function OrgDataProvider({ children }: { children: ReactNode }) {
     const [managers, setManagers] = useState<SalesManager[]>([]);
     const [sellers, setSellers] = useState<Seller[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
 
-    // Evita disparar buscas em paralelo (ex: StrictMode monta o efeito duas
-    // vezes em dev, ou o usuário clica em "Atualizar" duas vezes rápido).
     const isFetchingRef = useRef(false);
 
     const refresh = useCallback(async () => {
@@ -36,14 +35,16 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         isFetchingRef.current = true;
         setIsLoading(true);
         try {
-            const [managersData, sellersData, clientsData] = await Promise.all([
+            const [managersData, sellersData, clientsData, suppliersData] = await Promise.all([
                 fetchManagers(),
                 fetchSellers(),
                 fetchClients(),
+                fetchSuppliers(),
             ]);
             setManagers(managersData || []);
             setSellers(sellersData || []);
             setClients(clientsData || []);
+            setSuppliers(suppliersData || []);
             setHasLoaded(true);
         } catch (err) {
             console.error("Erro ao carregar dados organizacionais:", err);
@@ -53,17 +54,13 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    // OrgDataProvider vive no layout raiz do app (junto do SalesDataProvider),
-    // então este efeito roda UMA vez só quando o usuário entra no site —
-    // navegar entre Gerentes/Vendedores/Clientes não remonta o provider, os
-    // dados continuam em memória e só são buscados de novo no "Atualizar".
     useEffect(() => {
         if (!hasLoaded) refresh();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
-        <OrgDataContext.Provider value={{ managers, sellers, clients, isLoading, hasLoaded, refresh }}>
+        <OrgDataContext.Provider value={{ managers, sellers, clients, suppliers, isLoading, hasLoaded, refresh }}>
             {children}
         </OrgDataContext.Provider>
     );
