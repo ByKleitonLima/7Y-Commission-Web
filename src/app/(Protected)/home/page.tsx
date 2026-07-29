@@ -24,8 +24,25 @@ import {
 const ALL_FAMILIES = "Todas";
 const ALL_REGIONS = "Todas";
 
+// Função para obter o primeiro e o último dia do mês atual (formato YYYY-MM-DD)
+function getCurrentMonthRange() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    
+    // Primeiro dia do mês
+    const from = `${year}-${month}-01`;
+    
+    // Último dia do mês
+    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+    const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
+
+    return { from, to };
+}
+
 export default function Home() {
-    const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
+    // Inicializa dateRange com o mês atual por padrão
+    const [dateRange, setDateRange] = useState<{ from: string; to: string }>(getCurrentMonthRange);
     const [selectedFamily, setSelectedFamily] = useState<string>(ALL_FAMILIES);
     const [selectedRegion, setSelectedRegion] = useState<string>(ALL_REGIONS);
     const [chartFamily, setChartFamily] = useState<string>(ALL_FAMILIES);
