@@ -2,7 +2,7 @@
 
 import { DOCK_STATUS_COLORS, DOCK_STATUS_LABELS, DockStatus } from "@/services/wareHouseServices";
 
-const ORDER: DockStatus[] = ["vazia", "baixa", "media", "alta"];
+const ORDER: DockStatus[] = ["ocupado", "bloqueado", "livre"];
 
 export default function WarehouseLegend() {
     return (
@@ -11,7 +11,7 @@ export default function WarehouseLegend() {
             {ORDER.map((status) => (
                 <div key={status} className="flex items-center gap-2">
                     <span
-                        className="h-3 w-3 rounded-full"
+                        className="h-3 w-3 rounded-full border border-gray-300"
                         style={{ backgroundColor: DOCK_STATUS_COLORS[status] }}
                     />
                     <span className="text-xs text-gray-600">{DOCK_STATUS_LABELS[status]}</span>

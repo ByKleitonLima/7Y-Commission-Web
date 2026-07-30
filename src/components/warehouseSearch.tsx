@@ -2,27 +2,38 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { Product } from "@/components/productsTable";
+import { DockOccupancy } from "@/services/wareHouseServices";
 
 interface WarehouseSearchProps {
-    products: Product[];
-    onSelectDock: (dockCode: string) => void;
+    docks: DockOccupancy[];
+    onSelectDock: (code: string) => void;
 }
 
-export default function WarehouseSearch({ products, onSelectDock }: WarehouseSearchProps) {
+export default function WarehouseSearch({ docks, onSelectDock }: WarehouseSearchProps) {
     const [term, setTerm] = useState("");
     const [open, setOpen] = useState(false);
 
     const results = useMemo(() => {
-        if (term.trim().length < 2) return [];
-        const lower = term.toLowerCase();
-        return products
-            .filter((p) => p.dock && (p.name.toLowerCase().includes(lower) || p.product_code.toLowerCase().includes(lower)))
-            .slice(0, 8);
-    }, [term, products]);
+        const query = term.trim().toLowerCase();
+        if (query.length < 2) return [];
+
+        return docks
+            .filter((d) => {
+                const haystack = [
+                    d.code,
+                    d.rua || "",
+                    d.label,
+                    ...d.products.flatMap((p) => [p.name, p.product_code, p.supplier_name || ""]),
+                ]
+                    .join(" ")
+                    .toLowerCase();
+                return haystack.includes(query);
+            })
+            .slice(0, 10);
+    }, [term, docks]);
 
     return (
-        <div className="relative w-full max-w-sm">
+        <div className="relative w-full">
             <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
                 <Search className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} />
                 <input
@@ -32,7 +43,7 @@ export default function WarehouseSearch({ products, onSelectDock }: WarehouseSea
                         setOpen(true);
                     }}
                     onFocus={() => setOpen(true)}
-                    placeholder="Pesquisar produto por nome ou código..."
+                    placeholder="Produto, código, rua, posição ou fornecedor..."
                     className="w-full bg-transparent text-sm text-[#2d2d2d] outline-none placeholder:text-gray-400"
                 />
             </div>
@@ -41,20 +52,22 @@ export default function WarehouseSearch({ products, onSelectDock }: WarehouseSea
                 <>
                     <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
                     <div className="absolute top-[105%] left-0 z-20 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-                        {results.map((p) => (
+                        {results.map((d) => (
                             <button
-                                key={p.id}
+                                key={d.code}
                                 type="button"
                                 onClick={() => {
-                                    onSelectDock(p.dock as string);
+                                    onSelectDock(d.code);
                                     setOpen(false);
-                                    setTerm(p.name);
+                                    setTerm(d.code);
                                 }}
                                 className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-gray-50"
                             >
-                                <span className="truncate text-[#2d2d2d]">{p.name}</span>
+                                <span className="truncate text-[#2d2d2d]">
+                                    {d.products[0]?.name || d.label}
+                                </span>
                                 <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
-                                    {p.dock}
+                                    {d.code}
                                 </span>
                             </button>
                         ))}

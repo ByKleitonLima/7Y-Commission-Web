@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Lock, Unlock } from "lucide-react";
 import Modal from "@/components/modal";
 import {
@@ -11,15 +11,15 @@ import {
     DOCK_STATUS_LABELS,
 } from "@/services/wareHouseServices";
 
-interface DockModalProps {
+interface WarehouseModalProps {
     dock: DockOccupancy | null;
     onClose: () => void;
-    onCapacityChanged: () => void;
+    onChanged: () => void;
 }
 
-export default function DockModal({ dock, onClose, onCapacityChanged }: DockModalProps) {
+export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseModalProps) {
     const [capacityInput, setCapacityInput] = useState("");
-    const [saving, setSaving] = useState(false);
+    const [savingCapacity, setSavingCapacity] = useState(false);
     const [togglingBlock, setTogglingBlock] = useState(false);
 
     useEffect(() => {
@@ -33,24 +33,20 @@ export default function DockModal({ dock, onClose, onCapacityChanged }: DockModa
     const handleSaveCapacity = async () => {
         const parsed = Number(capacityInput);
         if (!parsed || parsed <= 0) return;
+        setSavingCapacity(true);
         try {
-            setSaving(true);
             await upsertDockCapacity(dock.code, parsed);
-            onCapacityChanged();
-        } catch (err) {
-            console.error("Erro ao atualizar capacidade da doca:", err);
+            onChanged();
         } finally {
-            setSaving(false);
+            setSavingCapacity(false);
         }
     };
 
     const handleToggleBlocked = async () => {
+        setTogglingBlock(true);
         try {
-            setTogglingBlock(true);
             await upsertDockBlocked(dock.code, !dock.blocked);
-            onCapacityChanged();
-        } catch (err) {
-            console.error("Erro ao atualizar bloqueio da posição:", err);
+            onChanged();
         } finally {
             setTogglingBlock(false);
         }
@@ -65,20 +61,19 @@ export default function DockModal({ dock, onClose, onCapacityChanged }: DockModa
                         style={{ backgroundColor: DOCK_STATUS_COLORS[dock.status] }}
                     />
                     <span className="text-sm font-medium text-gray-700">{DOCK_STATUS_LABELS[dock.status]}</span>
-                    {dock.rua && (
-                        <span className="ml-auto text-xs text-gray-400">{dock.rua}</span>
-                    )}
+                    <span className="ml-auto text-xs text-gray-400">
+                        Galpão {dock.galpao}{dock.rua ? ` · ${dock.rua}` : ""}
+                    </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg border border-gray-200 p-3">
-                        <p className="text-[11px] text-gray-400">Produtos nesta posição</p>
+                        <p className="text-[11px] text-gray-400">Produtos</p>
                         <p className="text-lg font-semibold text-[#2d2d2d]">{dock.productCount}</p>
                     </div>
-
                     {isDoca ? (
                         <div className="rounded-lg border border-gray-200 p-3">
-                            <p className="text-[11px] text-gray-400">Capacidade (SKUs)</p>
+                            <p className="text-[11px] text-gray-400">Capacidade</p>
                             <div className="mt-1 flex items-center gap-2">
                                 <input
                                     type="number"
@@ -90,17 +85,17 @@ export default function DockModal({ dock, onClose, onCapacityChanged }: DockModa
                                 <button
                                     type="button"
                                     onClick={handleSaveCapacity}
-                                    disabled={saving}
+                                    disabled={savingCapacity}
                                     className="rounded-md bg-[#2d2d2d] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#1f1f1f] disabled:opacity-60"
                                 >
-                                    {saving ? "..." : "Salvar"}
+                                    {savingCapacity ? "..." : "Salvar"}
                                 </button>
                             </div>
                         </div>
                     ) : (
                         <div className="rounded-lg border border-gray-200 p-3">
                             <p className="text-[11px] text-gray-400">Tipo</p>
-                            <p className="text-sm font-medium text-[#2d2d2d]">Posição individual</p>
+                            <p className="text-sm font-medium text-[#2d2d2d]">Posição</p>
                         </div>
                     )}
                 </div>
@@ -129,10 +124,10 @@ export default function DockModal({ dock, onClose, onCapacityChanged }: DockModa
                 </button>
 
                 <div>
-                    <p className="mb-2 text-sm font-semibold text-[#2d2d2d]">Produtos armazenados</p>
+                    <p className="mb-2 text-sm font-semibold text-[#2d2d2d]">Produtos nesta posição</p>
                     {dock.products.length === 0 ? (
                         <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-xs text-gray-400">
-                            Nenhum produto vinculado a esta posição.
+                            Nenhum produto vinculado.
                         </p>
                     ) : (
                         <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
