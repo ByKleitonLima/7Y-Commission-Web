@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { DOCK_DEFINITIONS, DockDefinition } from "@/lib/wareHouseLayout";
+import { DOCK_DEFINITIONS, DockDefinition } from "@/lib/warehouseLayout";
 import { Product } from "@/components/productsTable";
 
 const TABLE = "warehouse_docks";
