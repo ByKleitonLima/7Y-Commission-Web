@@ -12,6 +12,7 @@ export interface Supplier {
     status: "Ativo" | "Inativo";
     avatar_url?: string | null;
     productsCount?: number;
+    categories?: string[];
 }
 
 type StatusFilter = "Todos os status" | "Ativo" | "Inativo";
@@ -19,12 +20,14 @@ type StatusFilter = "Todos os status" | "Ativo" | "Inativo";
 interface ColumnFilters {
     code: string;
     name: string;
+    category: string;
     status: StatusFilter;
 }
 
 const EMPTY_FILTERS: ColumnFilters = {
     code: "",
     name: "",
+    category: "",
     status: "Todos os status",
 };
 
@@ -65,7 +68,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
     };
 
     const filtered = suppliers.filter((s) => {
-        const matchesSearch = `${s.name || ""} ${s.supplier_code || ""}`
+        const matchesSearch = `${s.name || ""} ${s.supplier_code || ""} ${(s.categories || []).join(" ")}`
             .toLowerCase()
             .includes(search.toLowerCase());
 
@@ -75,9 +78,13 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
         const matchesName =
             !filters.name || (s.name || "").toLowerCase().includes(filters.name.toLowerCase());
 
+        const matchesCategory =
+            !filters.category ||
+            (s.categories || []).some((c) => c.toLowerCase().includes(filters.category.toLowerCase()));
+
         const matchesStatus = filters.status === "Todos os status" || s.status === filters.status;
 
-        return matchesSearch && matchesCode && matchesName && matchesStatus;
+        return matchesSearch && matchesCode && matchesName && matchesCategory && matchesStatus;
     });
 
     if (suppliers.length === 0) {
@@ -96,7 +103,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar por nome ou código/CNPJ..."
+                        placeholder="Buscar por nome, código/CNPJ ou categoria..."
                         className="w-full bg-transparent text-sm text-[#2d2d2d] outline-none placeholder:text-gray-400"
                     />
                 </div>
@@ -121,6 +128,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
                     <tr>
                         <th className="px-6 py-3 font-medium">Fornecedor</th>
                         <th className="px-6 py-3 font-medium">Código / CNPJ</th>
+                        <th className="px-6 py-3 font-medium">Categorias</th>
                         <th className="px-6 py-3 font-medium">Status</th>
                         <th className="px-6 py-3 text-center font-medium">Produtos Vinculados</th>
                         <th className="px-6 py-3 text-right font-medium">Ações</th>
@@ -150,6 +158,23 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
 
                             <td className="px-6 py-4 font-mono text-xs text-gray-500">
                                 {supplier.supplier_code || "-"}
+                            </td>
+
+                            <td className="px-6 py-4">
+                                {supplier.categories && supplier.categories.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                        {supplier.categories.map((c) => (
+                                            <span
+                                                key={c}
+                                                className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600"
+                                            >
+                                                {c}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    "-"
+                                )}
                             </td>
 
                             <td className="px-6 py-4">
@@ -190,7 +215,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
 
                     {filtered.length === 0 && (
                         <tr>
-                            <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-400">
+                            <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-400">
                                 Nenhum fornecedor encontrado para os filtros selecionados.
                             </td>
                         </tr>
@@ -218,6 +243,17 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
                             value={draftFilters.name}
                             onChange={(e) => setDraftFilters({ ...draftFilters, name: e.target.value })}
                             placeholder="Filtrar por nome do fornecedor"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d] focus:ring-1 focus:ring-[#2d2d2d]"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Categoria</label>
+                        <input
+                            type="text"
+                            value={draftFilters.category}
+                            onChange={(e) => setDraftFilters({ ...draftFilters, category: e.target.value })}
+                            placeholder="Filtrar por categoria de atuação"
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d] focus:ring-1 focus:ring-[#2d2d2d]"
                         />
                     </div>

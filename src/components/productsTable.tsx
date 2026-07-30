@@ -3,12 +3,21 @@
 import { useMemo, useState } from "react";
 import { Search, Pencil, Trash2, SlidersHorizontal, Package } from "lucide-react";
 import Modal from "@/components/modal";
-
+export interface ProductSize {
+    id: string;
+    name: string;
+    quantity: string;
+    code: string;
+}
 export interface Product {
     id: string;
     product_code: string;
     name: string;
     price: number;
+    promoPrice100?: number | null;
+    bundleQuantity?: string;
+    category?: string;
+    sizes?: ProductSize[];
     status: "Ativo" | "Inativo";
     supplier_code: string;
     supplier_name?: string;

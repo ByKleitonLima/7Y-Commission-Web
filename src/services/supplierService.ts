@@ -21,6 +21,7 @@ export async function fetchSuppliers(): Promise<Supplier[]> {
         status: s.status,
         avatar_url: s.avatar_url,
         productsCount: s.products_count || 0,
+        categories: s.categories || [],
     }));
 }
 
@@ -34,6 +35,7 @@ export async function createSupplier(supplierData: Omit<Supplier, "id">) {
                 status: supplierData.status,
                 avatar_url: supplierData.avatar_url,
                 products_count: supplierData.productsCount || 0,
+                categories: supplierData.categories || [],
                 updated_at: new Date().toISOString(),
             },
         ])
@@ -51,6 +53,7 @@ export async function updateSupplier(id: string, supplierData: Omit<Supplier, "i
             name: supplierData.name,
             status: supplierData.status,
             avatar_url: supplierData.avatar_url,
+            categories: supplierData.categories || [],
             updated_at: new Date().toISOString(),
         })
         .eq("id", id)
