@@ -11,6 +11,7 @@ import {
     Package,
     Boxes,
     Upload,
+    Warehouse,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -23,6 +24,7 @@ export const NAV_ITEMS = [
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
     { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
     { label: "Produtos", href: "/products", icon: Boxes, pageTitle: "Produtos" },
+    { label: "Mapa do Galpão", href: "/warehouse", icon: Warehouse, pageTitle: "Mapa do Galpão" },
     { label: "Importar", href: "/import", icon: Upload, pageTitle: "Importar planilha de comissão" },
 ];
 
@@ -34,7 +36,6 @@ function Sidebar() {
     const initial = displayName.charAt(0).toUpperCase();
 
     return (
-        /* O container de fora tem a classe 'group' para controlar o hover apenas via CSS */
         <aside className="group fixed left-6 top-[50px] bottom-[50px] z-50 w-[72px]">
             <div
                 className="absolute inset-y-0 left-0 flex flex-col rounded-2xl bg-[#2d2d2d] shadow-2xl transition-[width] duration-200 ease-out will-change-[width] overflow-hidden w-[72px] group-hover:w-64"

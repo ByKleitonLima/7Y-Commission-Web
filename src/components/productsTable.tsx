@@ -22,6 +22,7 @@ export interface Product {
     supplier_code: string;
     supplier_name?: string;
     image_url?: string | null;
+    dock?: string | null;
 }
 
 type StatusFilter = "Todos os status" | "Ativo" | "Inativo";
@@ -140,6 +141,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                         <th className="px-6 py-3 font-medium">Produto</th>
                         <th className="px-6 py-3 font-medium">Código</th>
                         <th className="px-6 py-3 font-medium">Fornecedor</th>
+                        <th className="px-6 py-3 font-medium">Doca</th>
                         <th className="px-6 py-3 font-medium">Preço</th>
                         <th className="px-6 py-3 font-medium">Status</th>
                         <th className="px-6 py-3 text-right font-medium">Ações</th>
@@ -173,6 +175,16 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
 
                             <td className="px-6 py-4 text-gray-700">
                                 {product.supplier_name || product.supplier_code || "N/A"}
+                            </td>
+
+                            <td className="px-6 py-4 text-gray-700">
+                                {product.dock ? (
+                                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                        {product.dock}
+                                    </span>
+                                ) : (
+                                    <span className="text-xs text-gray-400">Sem local</span>
+                                )}
                             </td>
 
                             <td className="px-6 py-4 font-medium text-gray-900">
@@ -221,7 +233,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
 
                     {filtered.length === 0 && (
                         <tr>
-                            <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-400">
+                            <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-400">
                                 Nenhum produto encontrado para os filtros selecionados.
                             </td>
                         </tr>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Camera, X, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Camera, X, ChevronDown, Plus, Trash2, MapPin } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Product, ProductSize } from "@/components/productsTable";
 import { Supplier } from "@/components/suppliersTable";
+import { DOCK_CODES } from "@/lib/wareHouseLayout";
 
 interface AddProductModalProps {
     open: boolean;
@@ -43,6 +44,7 @@ export default function AddProductModal({
     const [bundleQuantity, setBundleQuantity] = useState("");
     const [sizes, setSizes] = useState<ProductSize[]>([]);
     const [status, setStatus] = useState<"Ativo" | "Inativo">("Ativo");
+    const [dock, setDock] = useState("");
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -62,6 +64,7 @@ export default function AddProductModal({
             setSizes(productToEdit.sizes || []);
             setSupplierCode(productToEdit.supplier_code || "");
             setStatus(productToEdit.status || "Ativo");
+            setDock(productToEdit.dock || "");
             setImageUrl(productToEdit.image_url || null);
         } else {
             setName("");
@@ -73,6 +76,7 @@ export default function AddProductModal({
             setSizes([]);
             setSupplierCode(suppliers[0]?.supplier_code || "");
             setStatus("Ativo");
+            setDock("");
             setImageUrl(null);
         }
     }, [productToEdit, open, suppliers]);
@@ -144,6 +148,7 @@ export default function AddProductModal({
                 supplier_code: supplierCode,
                 status,
                 image_url: imageUrl,
+                dock: dock || null,
             });
         } finally {
             setIsSaving(false);
@@ -246,6 +251,23 @@ export default function AddProductModal({
                                 </>
                             )}
                         </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-[#2d2d2d]">
+                            <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={2} />
+                            Localização no Galpão
+                        </label>
+                        <select
+                            value={dock}
+                            onChange={(e) => setDock(e.target.value)}
+                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d] focus:ring-1 focus:ring-[#2d2d2d]"
+                        >
+                            <option value="">Sem localização definida</option>
+                            {DOCK_CODES.map((code) => (
+                                <option key={code} value={code}>{code}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

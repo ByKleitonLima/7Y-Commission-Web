@@ -11,6 +11,7 @@ import { createProduct, updateProduct, deleteProduct, fetchProducts } from "@/se
 import { recomputeSupplierProductsCount } from "@/services/supplierService";
 import { useOrgData } from "@/context/orgDataContext";
 import { supabase } from "@/lib/supabase";
+import { WAREHOUSE_IMPORT_COLUMN_HINTS } from "@/lib/warehouseLayout";
 import * as XLSX from "xlsx";
 
 export default function Products() {
@@ -127,12 +128,16 @@ export default function Products() {
                 const colName = headers.findIndex((h: any) => String(h).toLowerCase().includes("produto") || String(h).toLowerCase().includes("nome"));
                 const colPrice = headers.findIndex((h: any) => String(h).toLowerCase().includes("preço") || String(h).toLowerCase().includes("preco") || String(h).toLowerCase().includes("valor"));
                 const colSupplier = headers.findIndex((h: any) => String(h).toLowerCase().includes("fornecedor") || String(h).toLowerCase().includes("cnpj"));
+                const colDock = headers.findIndex((h: any) =>
+                    WAREHOUSE_IMPORT_COLUMN_HINTS.some((hint) => String(h).toUpperCase().includes(hint))
+                );
 
                 for (const row of validRows) {
                     const code = String(row[colCode !== -1 ? colCode : 0] || "").trim();
                     const name = String(row[colName !== -1 ? colName : 1] || "").trim();
                     const price = parseFloat(String(row[colPrice !== -1 ? colPrice : 2] || "0").replace(",", ".")) || 0;
                     const supplierCode = String(row[colSupplier !== -1 ? colSupplier : 3] || "").trim();
+                    const dockValue = colDock !== -1 ? String(row[colDock] || "").trim().toUpperCase() : "";
 
                     const productPayload = {
                         product_code: code,
@@ -140,6 +145,7 @@ export default function Products() {
                         price: price,
                         supplier_code: supplierCode || null,
                         status: "Ativo",
+                        dock: dockValue || null,
                         updated_at: new Date().toISOString(),
                     };
 
