@@ -1,9 +1,11 @@
 import { supabase } from "@/lib/supabase";
 import { Product } from "@/components/productsTable";
 
+const TABLE = "products";
+
 export async function fetchProducts(): Promise<Product[]> {
     const { data, error } = await supabase
-        .from("products")
+        .from(TABLE)
         .select(`
             *,
             suppliers (
@@ -31,7 +33,7 @@ export async function fetchProducts(): Promise<Product[]> {
 
 export async function createProduct(productData: Omit<Product, "id">) {
     const { data, error } = await supabase
-        .from("products")
+        .from(TABLE)
         .insert([
             {
                 product_code: productData.product_code,
@@ -51,7 +53,7 @@ export async function createProduct(productData: Omit<Product, "id">) {
 
 export async function updateProduct(id: string, productData: Omit<Product, "id">) {
     const { data, error } = await supabase
-        .from("products")
+        .from(TABLE)
         .update({
             product_code: productData.product_code,
             name: productData.name,
@@ -69,6 +71,6 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
 }
 
 export async function deleteProduct(id: string) {
-    const { error } = await supabase.from("products").delete().eq("id", id);
+    const { error } = await supabase.from(TABLE).delete().eq("id", id);
     if (error) throw error;
 }

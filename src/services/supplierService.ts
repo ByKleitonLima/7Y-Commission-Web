@@ -1,9 +1,11 @@
 import { supabase } from "@/lib/supabase";
 import { Supplier } from "@/components/suppliersTable";
 
+const TABLE = "suppliers";
+
 export async function fetchSuppliers(): Promise<Supplier[]> {
     const { data, error } = await supabase
-        .from("suppliers")
+        .from(TABLE)
         .select("*")
         .order("name", { ascending: true });
 
@@ -24,7 +26,7 @@ export async function fetchSuppliers(): Promise<Supplier[]> {
 
 export async function createSupplier(supplierData: Omit<Supplier, "id">) {
     const { data, error } = await supabase
-        .from("suppliers")
+        .from(TABLE)
         .insert([
             {
                 supplier_code: supplierData.supplier_code,
@@ -43,7 +45,7 @@ export async function createSupplier(supplierData: Omit<Supplier, "id">) {
 
 export async function updateSupplier(id: string, supplierData: Omit<Supplier, "id">) {
     const { data, error } = await supabase
-        .from("suppliers")
+        .from(TABLE)
         .update({
             supplier_code: supplierData.supplier_code,
             name: supplierData.name,
@@ -59,7 +61,7 @@ export async function updateSupplier(id: string, supplierData: Omit<Supplier, "i
 }
 
 export async function deleteSupplier(id: string) {
-    const { error } = await supabase.from("suppliers").delete().eq("id", id);
+    const { error } = await supabase.from(TABLE).delete().eq("id", id);
     if (error) throw error;
 }
 
@@ -74,7 +76,7 @@ export async function recomputeSupplierProductsCount(supplierCodes: string[]) {
 
         if (!error) {
             await supabase
-                .from("suppliers")
+                .from(TABLE)
                 .update({ products_count: count || 0 })
                 .eq("supplier_code", code);
         }
