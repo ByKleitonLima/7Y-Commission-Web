@@ -5,7 +5,7 @@ import { Camera, X, ChevronDown, Plus, Trash2, MapPin } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Product, ProductSize } from "@/components/productsTable";
 import { Supplier } from "@/components/suppliersTable";
-import { DOCK_CODES } from "@/lib/wareHouseLayout";
+import { DOCK_CODES } from "@/lib/warehouseLayout";
 
 interface AddProductModalProps {
     open: boolean;
@@ -381,9 +381,8 @@ export default function AddProductModal({
                             }}
                             onDragLeave={() => setIsDraggingImage(false)}
                             onDrop={handleDrop}
-                            className={`flex min-h-[130px] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed bg-gray-50 p-4 text-center transition-colors ${
-                                isDraggingImage ? "border-[#2d2d2d] bg-gray-100" : "border-gray-300 hover:border-[#2d2d2d] hover:bg-gray-100"
-                            }`}
+                            className={`flex min-h-[130px] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed bg-gray-50 p-4 text-center transition-colors ${isDraggingImage ? "border-[#2d2d2d] bg-gray-100" : "border-gray-300 hover:border-[#2d2d2d] hover:bg-gray-100"
+                                }`}
                         >
                             {imageUrl ? (
                                 <img src={imageUrl} alt="Prévia" className="max-h-[110px] rounded-md object-contain" />

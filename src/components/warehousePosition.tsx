@@ -18,7 +18,8 @@ function WarehousePositionBase({ dock, highlighted, onClick, onHoverStart, onHov
         [dock, onHoverStart]
     );
 
-    const fontSize = dock.type === "doca" ? 9 : 6;
+    const displayText = dock.shortLabel ?? dock.code.split("-").slice(-2).join("-");
+    const fontSize = dock.type === "doca" ? 10 : 9;
 
     return (
         <g>
@@ -45,7 +46,7 @@ function WarehousePositionBase({ dock, highlighted, onClick, onHoverStart, onHov
                     fill="#111827"
                     pointerEvents="none"
                 >
-                    {dock.code.split("-").slice(-2).join("-")}
+                    {displayText}
                 </text>
             )}
         </g>
