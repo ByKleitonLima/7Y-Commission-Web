@@ -1,23 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
-import { WAREHOUSE_ROOMS, WAREHOUSE_WALLS, WAREHOUSE_DOORS } from "@/lib/warehouseLayout";
-import { DockOccupancy } from "@/services/wareHouseServices";
-import WarehousePosition from "@/components/warehousePosition";
+import React from "react";
+import { WAREHOUSE_ROOMS } from "@/lib/warehouseLayout";
+import { DockOccupancy, DOCK_STATUS_COLORS } from "@/services/wareHouseServices";
 
 interface WarehouseSvgProps {
     docks: DockOccupancy[];
     highlightedDock: string | null;
     onDockClick: (dock: DockOccupancy) => void;
-    onDockHoverStart: (dock: DockOccupancy, x: number, y: number) => void;
+    onDockHoverStart: (dock: DockOccupancy, clientX: number, clientY: number) => void;
     onDockHoverEnd: () => void;
-}
-
-interface StreetGroup {
-    rua: string;
-    galpao: 1 | 2;
-    labelX: number;
-    labelY: number;
 }
 
 export default function WarehouseSvg({
@@ -27,105 +19,86 @@ export default function WarehouseSvg({
     onDockHoverStart,
     onDockHoverEnd,
 }: WarehouseSvgProps) {
-    const streetGroups = useMemo<StreetGroup[]>(() => {
-        const map = new Map<string, { galpao: 1 | 2; minX: number; minY: number }>();
-
-        docks.forEach((d) => {
-            if (!d.rua) return;
-            const key = `${d.galpao}-${d.rua}`;
-            const current = map.get(key);
-            if (!current) {
-                map.set(key, { galpao: d.galpao, minX: d.x, minY: d.y });
-            } else {
-                current.minX = Math.min(current.minX, d.x);
-                current.minY = Math.min(current.minY, d.y);
-            }
-        });
-
-        return Array.from(map.entries()).map(([key, value]) => ({
-            rua: key.split("-").slice(1).join("-"),
-            galpao: value.galpao,
-            labelX: value.minX,
-            labelY: value.minY - 6,
-        }));
-    }, [docks]);
-
     return (
-        <>
-            {WAREHOUSE_ROOMS.map((room) => (
-                <g key={room.id}>
-                    <rect
-                        x={room.x}
-                        y={room.y}
-                        width={room.width}
-                        height={room.height}
-                        fill={room.fill || "#ffffff"}
-                        stroke="#334155"
-                        strokeWidth={room.id.includes("outline") ? 2.5 : 1}
-                    />
-                    {room.label && (
+        <g id="warehouse-svg-content">
+            {/* 1. Renderiza o fundo, paredes e ruas do galpão */}
+            {WAREHOUSE_ROOMS.map((room) => {
+                const isHeader = room.id === "g1-header";
+                const isOutline = room.id === "g1-outline";
+
+                return (
+                    <g key={room.id}>
+                        <rect
+                            x={room.x}
+                            y={room.y}
+                            width={room.width}
+                            height={room.height}
+                            fill={
+                                room.fill ||
+                                (room.isStreet ? "#e2e8f0" : "#ffffff")
+                            }
+                            stroke={room.stroke || "#cbd5e1"}
+                            strokeWidth={isOutline ? 2 : 1}
+                            rx={isOutline ? 8 : 2}
+                        />
+                        {room.label && (
+                            <text
+                                x={room.x + room.width / 2}
+                                y={room.y + room.height / 2}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fill={isHeader ? "#ffffff" : "#64748b"}
+                                fontSize={isHeader ? 14 : 10}
+                                fontWeight={isHeader ? "bold" : "600"}
+                                className="pointer-events-none select-none"
+                            >
+                                {room.label}
+                            </text>
+                        )}
+                    </g>
+                );
+            })}
+
+            {/* 2. Renderiza cada posição/doca vinda do estado */}
+            {(docks || []).map((dock) => {
+                const isHighlighted = highlightedDock === dock.code;
+                const strokeColor = isHighlighted ? "#3b82f6" : "#94a3b8";
+                const fillColor = DOCK_STATUS_COLORS[dock.status] || "#ffffff";
+                const isDarkText = dock.status === "livre";
+
+                return (
+                    <g
+                        key={dock.code}
+                        onClick={() => onDockClick(dock)}
+                        onMouseMove={(e) => onDockHoverStart(dock, e.clientX, e.clientY)}
+                        onMouseLeave={onDockHoverEnd}
+                        className="cursor-pointer transition-opacity hover:opacity-80"
+                    >
+                        <rect
+                            x={dock.x}
+                            y={dock.y}
+                            width={dock.width}
+                            height={dock.height}
+                            fill={fillColor}
+                            stroke={strokeColor}
+                            strokeWidth={isHighlighted ? 2.5 : 1}
+                            rx={3}
+                        />
                         <text
-                            x={room.x + room.width / 2}
-                            y={room.y + 16}
+                            x={dock.x + dock.width / 2}
+                            y={dock.y + dock.height / 2}
                             textAnchor="middle"
-                            fontSize={12}
-                            fontWeight={600}
-                            fill="#1f2937"
+                            dominantBaseline="central"
+                            fill={isDarkText ? "#1e293b" : "#ffffff"}
+                            fontSize={9}
+                            fontWeight="700"
+                            className="pointer-events-none select-none"
                         >
-                            {room.label}
+                            {dock.shortLabel || dock.code.replace("G1-P", "")}
                         </text>
-                    )}
-                </g>
-            ))}
-
-            {WAREHOUSE_WALLS.map((wall) => (
-                <line
-                    key={wall.id}
-                    x1={wall.x1}
-                    y1={wall.y1}
-                    x2={wall.x2}
-                    y2={wall.y2}
-                    stroke="#111827"
-                    strokeWidth={wall.thick ? 3 : 1.5}
-                />
-            ))}
-
-            {WAREHOUSE_DOORS.map((door) => (
-                <g key={door.id} transform={`translate(${door.x} ${door.y}) rotate(${door.rotation})`}>
-                    <path
-                        d={`M0,0 A${door.width},${door.width} 0 0 1 ${door.width},${door.width}`}
-                        fill="none"
-                        stroke="#6b7280"
-                        strokeWidth={1}
-                        strokeDasharray="2 2"
-                    />
-                    <line x1={0} y1={0} x2={door.width} y2={0} stroke="#6b7280" strokeWidth={1.5} />
-                </g>
-            ))}
-
-            {streetGroups.map((group) => (
-                <text
-                    key={`${group.galpao}-${group.rua}`}
-                    x={group.labelX}
-                    y={group.labelY}
-                    fontSize={11}
-                    fontWeight={600}
-                    fill="#374151"
-                >
-                    {group.rua}
-                </text>
-            ))}
-
-            {docks.map((dock) => (
-                <WarehousePosition
-                    key={dock.code}
-                    dock={dock}
-                    highlighted={highlightedDock === dock.code}
-                    onClick={onDockClick}
-                    onHoverStart={onDockHoverStart}
-                    onHoverEnd={onDockHoverEnd}
-                />
-            ))}
-        </>
+                    </g>
+                );
+            })}
+        </g>
     );
 }

@@ -4,11 +4,6 @@ import { Product } from "@/components/productsTable";
 
 const TABLE = "warehouse_docks";
 
-// Agora o status é definido assim:
-// - "ocupado" (verde): existe pelo menos 1 produto com esse "dock" cadastrado
-//   (isso já vem da tela de Produtos, campo Localização no Galpão)
-// - "bloqueado" (vermelho): marcado manualmente aqui no mapa do galpão
-// - "livre" (branco): nenhum produto e não está bloqueado
 export type DockStatus = "livre" | "ocupado" | "bloqueado";
 
 export interface DockOccupancy extends DockDefinition {
@@ -37,9 +32,6 @@ interface DockMeta {
     blocked: boolean;
 }
 
-// Busca capacidade (só relevante pra docas de recebimento) e o flag de
-// bloqueio manual (relevante pra qualquer posição). Se a coluna "blocked"
-// ainda não existir na tabela, cai no valor padrão (false) sem quebrar nada.
 export async function fetchDockMeta(): Promise<Record<string, DockMeta>> {
     const meta: Record<string, DockMeta> = {};
     DOCK_DEFINITIONS.forEach((d) => {
@@ -59,9 +51,6 @@ export async function fetchDockMeta(): Promise<Record<string, DockMeta>> {
         const current = meta[row.code] ?? { capacityMax: 1, blocked: false };
         meta[row.code] = {
             capacityMax: row.capacity_max ?? current.capacityMax,
-            // Se a coluna "blocked" ainda não existir no banco, row.blocked
-            // vem undefined e cai em false — não trava nada, só o botão de
-            // bloquear não vai persistir até rodar a migration.
             blocked: Boolean(row.blocked),
         };
     });
