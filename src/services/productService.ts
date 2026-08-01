@@ -33,6 +33,7 @@ export async function fetchProducts(): Promise<Product[]> {
         supplier_name: p.suppliers?.name || "Sem Fornecedor",
         image_url: p.image_url,
         dock: p.dock || null,
+        color: p.color || null,
     }));
 }
 
@@ -52,6 +53,7 @@ export async function createProduct(productData: Omit<Product, "id">) {
                 supplier_code: productData.supplier_code,
                 image_url: productData.image_url,
                 dock: productData.dock || null,
+                color: productData.color || null,
                 updated_at: new Date().toISOString(),
             },
         ])
@@ -76,6 +78,7 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
             supplier_code: productData.supplier_code,
             image_url: productData.image_url,
             dock: productData.dock || null,
+            color: productData.color || null,
             updated_at: new Date().toISOString(),
         })
         .eq("id", id)

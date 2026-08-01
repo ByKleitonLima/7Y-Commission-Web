@@ -68,7 +68,7 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
 
                 <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg border border-gray-200 p-3">
-                        <p className="text-[11px] text-gray-400">Produtos</p>
+                        <p className="text-[11px] text-gray-400">Itens / Tamanhos</p>
                         <p className="text-lg font-semibold text-[#2d2d2d]">{dock.productCount}</p>
                     </div>
                     {isDoca ? (
@@ -104,11 +104,10 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
                     type="button"
                     onClick={handleToggleBlocked}
                     disabled={togglingBlock}
-                    className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-                        dock.blocked
-                            ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
+                    className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${dock.blocked
+                        ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        }`}
                 >
                     {dock.blocked ? (
                         <>
@@ -124,19 +123,21 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
                 </button>
 
                 <div>
-                    <p className="mb-2 text-sm font-semibold text-[#2d2d2d]">Produtos nesta posição</p>
+                    <p className="mb-2 text-sm font-semibold text-[#2d2d2d]">Produtos e Tamanhos nesta posição</p>
                     {dock.products.length === 0 ? (
                         <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-xs text-gray-400">
-                            Nenhum produto vinculado.
+                            Nenhum item/tamanho vinculado.
                         </p>
                     ) : (
                         <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                            {dock.products.map((p) => (
-                                <div key={p.id} className="rounded-lg border border-gray-100 p-2.5">
+                            {dock.products.map((p: any, idx: number) => (
+                                <div key={p.id || idx} className="rounded-lg border border-gray-100 p-2.5">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="truncate text-sm font-medium text-[#2d2d2d]">{p.name}</span>
+                                        <span className="truncate text-sm font-medium text-[#2d2d2d]">
+                                            {p.name} {p.sizeName ? `(Tam: ${p.sizeName})` : ""}
+                                        </span>
                                         <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] text-gray-500">
-                                            {p.product_code}
+                                            {p.sizeCode || p.product_code}
                                         </span>
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500">

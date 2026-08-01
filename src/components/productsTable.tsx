@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import { Search, Pencil, Trash2, SlidersHorizontal, Package } from "lucide-react";
 import Modal from "@/components/modal";
+
 export interface ProductSize {
     id: string;
     name: string;
     quantity: string;
     code: string;
+    dock?: string | null;
 }
+
 export interface Product {
     id: string;
     product_code: string;
@@ -23,6 +26,7 @@ export interface Product {
     supplier_name?: string;
     image_url?: string | null;
     dock?: string | null;
+    color?: string | null;
 }
 
 type StatusFilter = "Todos os status" | "Ativo" | "Inativo";
@@ -141,95 +145,117 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                         <th className="px-6 py-3 font-medium">Produto</th>
                         <th className="px-6 py-3 font-medium">Código</th>
                         <th className="px-6 py-3 font-medium">Fornecedor</th>
-                        <th className="px-6 py-3 font-medium">Doca</th>
+                        <th className="px-6 py-3 font-medium">Docas / Tamanhos</th>
                         <th className="px-6 py-3 font-medium">Preço</th>
                         <th className="px-6 py-3 font-medium">Status</th>
                         <th className="px-6 py-3 text-right font-medium">Ações</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                    {filtered.map((product) => (
-                        <tr key={product.id} className="transition-colors hover:bg-gray-50/80">
-                            <td className="px-6 py-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-                                        {product.image_url ? (
-                                            <img
-                                                src={product.image_url}
-                                                alt={product.name}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
-                                                <Package className="h-5 w-5" />
-                                            </div>
-                                        )}
+                    {filtered.map((product) => {
+                        const sizesWithDocks = product.sizes?.filter((s) => s.dock) || [];
+
+                        return (
+                            <tr key={product.id} className="transition-colors hover:bg-gray-50/80">
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                                            {product.image_url ? (
+                                                <img
+                                                    src={product.image_url}
+                                                    alt={product.name}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                                                    <Package className="h-5 w-5" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <span className="font-medium text-gray-900">{product.name}</span>
                                     </div>
-                                    <span className="font-medium text-gray-900">{product.name}</span>
-                                </div>
-                            </td>
+                                </td>
 
-                            <td className="px-6 py-4 font-mono text-xs text-gray-500">
-                                {product.product_code || "-"}
-                            </td>
+                                <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                                    {product.product_code || "-"}
+                                </td>
 
-                            <td className="px-6 py-4 text-gray-700">
-                                {product.supplier_name || product.supplier_code || "N/A"}
-                            </td>
+                                <td className="px-6 py-4 text-gray-700">
+                                    {product.supplier_name || product.supplier_code || "N/A"}
+                                </td>
 
-                            <td className="px-6 py-4 text-gray-700">
-                                {product.dock ? (
-                                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
-                                        {product.dock}
-                                    </span>
-                                ) : (
-                                    <span className="text-xs text-gray-400">Sem local</span>
-                                )}
-                            </td>
+                                <td className="px-6 py-4 text-gray-700">
+                                    {sizesWithDocks.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1">
+                                            {sizesWithDocks.map((s) => (
+                                                <span
+                                                    key={s.id}
+                                                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                >
+                                                    <span
+                                                        className="h-2 w-2 rounded-full border border-black/10"
+                                                        style={{ backgroundColor: product.color || "#9ca3af" }}
+                                                    />
+                                                    {s.name ? `${s.name}: ` : ""}{s.dock}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : product.dock ? (
+                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                            <span
+                                                className="h-2.5 w-2.5 rounded-full border border-black/10"
+                                                style={{ backgroundColor: product.color || "#9ca3af" }}
+                                            />
+                                            {product.dock}
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-gray-400">Sem local</span>
+                                    )}
+                                </td>
 
-                            <td className="px-6 py-4 font-medium text-gray-900">
-                                {new Intl.NumberFormat("pt-BR", {
-                                    style: "currency",
-                                    currency: "BRL",
-                                }).format(product.price || 0)}
-                            </td>
+                                <td className="px-6 py-4 font-medium text-gray-900">
+                                    {new Intl.NumberFormat("pt-BR", {
+                                        style: "currency",
+                                        currency: "BRL",
+                                    }).format(product.price || 0)}
+                                </td>
 
-                            <td className="px-6 py-4">
-                                <span
-                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                        product.status === "Ativo"
+                                <td className="px-6 py-4">
+                                    <span
+                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${product.status === "Ativo"
                                             ? "bg-green-50 text-green-700 border border-green-200"
                                             : "bg-red-50 text-red-700 border border-red-200"
-                                    }`}
-                                >
-                                    {product.status}
-                                </span>
-                            </td>
+                                            }`}
+                                    >
+                                        {product.status}
+                                    </span>
+                                </td>
 
-                            <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        onClick={() => onEdit(product)}
-                                        className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                                        title="Editar"
-                                    >
-                                        <Pencil className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (confirm(`Deseja remover o produto "${product.name}"?`)) {
-                                                onDelete(product);
-                                            }
-                                        }}
-                                        className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                        title="Excluir"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                                <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            onClick={() => onEdit(product)}
+                                            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                                            title="Editar"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (confirm(`Deseja remover o produto "${product.name}"?`)) {
+                                                    onDelete(product);
+                                                }
+                                            }}
+                                            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
 
                     {filtered.length === 0 && (
                         <tr>

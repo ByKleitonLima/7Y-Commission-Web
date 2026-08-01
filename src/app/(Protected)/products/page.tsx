@@ -11,7 +11,6 @@ import { createProduct, updateProduct, deleteProduct, fetchProducts } from "@/se
 import { recomputeSupplierProductsCount } from "@/services/supplierService";
 import { useOrgData } from "@/context/orgDataContext";
 import { supabase } from "@/lib/supabase";
-import { WAREHOUSE_IMPORT_COLUMN_HINTS } from "@/lib/warehouseLayout";
 import * as XLSX from "xlsx";
 
 export default function Products() {
@@ -124,12 +123,14 @@ export default function Products() {
                 let sentCount = 0;
                 const supplierCodesTouched = new Set<string>();
 
+                const importColumnHints = ["DOCA", "POSIÇÃO", "POSICAO", "RUA", "LOCALIZAÇÃO", "LOCALIZACAO", "CODE", "CODIGO"];
+
                 const colCode = headers.findIndex((h: any) => String(h).toLowerCase().includes("código") || String(h).toLowerCase().includes("cod"));
                 const colName = headers.findIndex((h: any) => String(h).toLowerCase().includes("produto") || String(h).toLowerCase().includes("nome"));
                 const colPrice = headers.findIndex((h: any) => String(h).toLowerCase().includes("preço") || String(h).toLowerCase().includes("preco") || String(h).toLowerCase().includes("valor"));
                 const colSupplier = headers.findIndex((h: any) => String(h).toLowerCase().includes("fornecedor") || String(h).toLowerCase().includes("cnpj"));
                 const colDock = headers.findIndex((h: any) =>
-                    WAREHOUSE_IMPORT_COLUMN_HINTS.some((hint) => String(h).toUpperCase().includes(hint))
+                    importColumnHints.some((hint) => String(h).toUpperCase().includes(hint))
                 );
 
                 for (const row of validRows) {

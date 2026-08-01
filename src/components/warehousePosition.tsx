@@ -29,7 +29,7 @@ function WarehousePositionBase({ dock, highlighted, onClick, onHoverStart, onHov
                 width={dock.width}
                 height={dock.height}
                 rx={2}
-                fill={DOCK_STATUS_COLORS[dock.status]}
+                fill={dock.blocked ? DOCK_STATUS_COLORS.bloqueado : (dock as any).productColor || DOCK_STATUS_COLORS[dock.status]}
                 stroke={highlighted ? "#2563eb" : "#1f2937"}
                 strokeWidth={highlighted ? 2.5 : 0.6}
                 className={`cursor-pointer transition-opacity hover:opacity-80 ${highlighted ? "animate-pulse" : ""}`}

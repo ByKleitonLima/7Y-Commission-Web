@@ -436,3 +436,25 @@ export const WAREHOUSE_VIEWBOX = {
     width: TOTAL_W + MARGIN_X * 2,
     height: cursorY + 40,
 };
+
+// Zona de mercadoria: as docas (tipo "doca", códigos DOCA-01 a DOCA-43 —
+// o quadrado verde do mapa) são exclusivas para TOALHAS. As posições
+// comuns (tipo "posicao", ex: G1-P001) são para as demais mercadorias.
+export const TOWEL_CATEGORY = "Toalha e lenços";
+
+export const TOWEL_DOCK_CODES: string[] = DOCK_DEFINITIONS
+    .filter((d) => d.type === "doca")
+    .map((d) => d.code);
+
+export const MERCHANDISE_DOCK_CODES: string[] = DOCK_DEFINITIONS
+    .filter((d) => d.type === "posicao")
+    .map((d) => d.code);
+
+export function getAllowedDockCodes(category: string): string[] {
+    return category === TOWEL_CATEGORY ? TOWEL_DOCK_CODES : MERCHANDISE_DOCK_CODES;
+}
+
+export function isDockAllowedForCategory(dockCode: string, category: string): boolean {
+    if (!dockCode) return true; // "sem localização" sempre é válido
+    return getAllowedDockCodes(category).includes(dockCode);
+}

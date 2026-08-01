@@ -63,8 +63,13 @@ export default function WarehouseSvg({
             {(docks || []).map((dock) => {
                 const isHighlighted = highlightedDock === dock.code;
                 const strokeColor = isHighlighted ? "#3b82f6" : "#94a3b8";
-                const fillColor = DOCK_STATUS_COLORS[dock.status] || "#ffffff";
-                const isDarkText = dock.status === "livre";
+                const fillColor = dock.blocked
+                    ? DOCK_STATUS_COLORS.bloqueado
+                    : dock.productColor || DOCK_STATUS_COLORS[dock.status];
+                const isDarkText = dock.status === "livre" || !dock.productColor;
+
+                // Tenta recuperar a quantidade de fardos alocados nesta doca
+                const totalFardos = dock.quantity || (dock as any).product?.sizes?.[0]?.quantity;
 
                 return (
                     <g
@@ -84,9 +89,11 @@ export default function WarehouseSvg({
                             strokeWidth={isHighlighted ? 2.5 : 1}
                             rx={3}
                         />
+
+                        {/* Rótulo da Doca */}
                         <text
                             x={dock.x + dock.width / 2}
-                            y={dock.y + dock.height / 2}
+                            y={totalFardos ? dock.y + dock.height / 2 - 5 : dock.y + dock.height / 2}
                             textAnchor="middle"
                             dominantBaseline="central"
                             fill={isDarkText ? "#1e293b" : "#ffffff"}
@@ -96,6 +103,22 @@ export default function WarehouseSvg({
                         >
                             {dock.shortLabel || dock.code.replace("G1-P", "")}
                         </text>
+
+                        {/* Exibição da quantidade de fardos dentro do retângulo da doca */}
+                        {totalFardos && (
+                            <text
+                                x={dock.x + dock.width / 2}
+                                y={dock.y + dock.height / 2 + 7}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fill={isDarkText ? "#2563eb" : "#fef08a"}
+                                fontSize={8}
+                                fontWeight="800"
+                                className="pointer-events-none select-none"
+                            >
+                                {totalFardos} fds
+                            </text>
+                        )}
                     </g>
                 );
             })}

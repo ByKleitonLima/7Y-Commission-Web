@@ -13,6 +13,7 @@ export interface DockOccupancy extends DockDefinition {
     occupancyPercent: number;
     status: DockStatus;
     products: Product[];
+    productColor: string | null;
 }
 
 export const DOCK_STATUS_COLORS: Record<DockStatus, string> = {
@@ -95,6 +96,11 @@ export function buildDockOccupancy(
         const occupancyPercent =
             m.capacityMax > 0 ? Math.min(100, (dockProducts.length / m.capacityMax) * 100) : 0;
 
+        // Cor definida no cadastro do produto, usada para pintar a doca no mapa.
+        // Se houver mais de um produto na mesma doca com cores diferentes,
+        // usa a cor do primeiro (o tooltip lista todos os produtos mesmo assim).
+        const productColor = (dockProducts.find((p: any) => p.color)?.color as string) || null;
+
         return {
             ...def,
             capacityMax: m.capacityMax,
@@ -103,6 +109,7 @@ export function buildDockOccupancy(
             occupancyPercent,
             status: resolveStatus(dockProducts.length, m.blocked),
             products: dockProducts,
+            productColor,
         };
     });
 }

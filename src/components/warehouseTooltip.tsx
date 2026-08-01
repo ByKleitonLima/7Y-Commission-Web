@@ -10,6 +10,11 @@ interface WarehouseTooltipProps {
 }
 
 export default function WarehouseTooltip({ dock, x, y }: WarehouseTooltipProps) {
+    // Tenta obter o produto alocado na doca
+    const product = (dock as any).product || dock.products?.[0];
+    const imageUrl = product?.image_url;
+    const totalFardos = dock.quantity || product?.sizes?.[0]?.quantity;
+
     const levels = dock.levels || [
         { level: 4, status: "vazio" },
         { level: 3, status: "vazio" },
@@ -23,26 +28,52 @@ export default function WarehouseTooltip({ dock, x, y }: WarehouseTooltipProps) 
                 left: `${x + 15}px`,
                 top: `${y + 15}px`,
             }}
-            className="pointer-events-none fixed z-50 min-w-[220px] rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs text-white shadow-xl backdrop-blur-sm"
+            className="pointer-events-none fixed z-50 min-w-[240px] max-w-[280px] rounded-xl border border-slate-700 bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md"
         >
-            <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 mb-2">
-                <span className="font-bold text-slate-100">{dock.code}</span>
-                <span className="text-[10px] uppercase tracking-wider text-slate-400">
-                    {dock.rua || "GALPÃO 01"}
+            <div className="flex items-center justify-between border-b border-slate-700 pb-2 mb-2.5">
+                <span className="font-bold text-slate-100 text-sm">{dock.code}</span>
+                <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-300 border border-blue-500/30">
+                    {totalFardos ? `${totalFardos} Fardos` : (DOCK_STATUS_LABELS[dock.status] || "Vazio")}
                 </span>
             </div>
 
-            <div className="mb-2.5 flex items-center justify-between text-slate-300">
-                <span>Status:</span>
-                <span className="font-semibold text-emerald-400">
-                    {DOCK_STATUS_LABELS[dock.status]}
-                </span>
-            </div>
+            {/* SE HOUVER PRODUTO/MERCADORIA ALOCADA NA DOCA */}
+            {product ? (
+                <div className="mb-3 flex flex-col items-center gap-2 rounded-lg bg-slate-800/80 p-2.5 border border-slate-700/60">
+                    {/* Imagem do Produto */}
+                    {imageUrl ? (
+                        <div className="relative h-28 w-full overflow-hidden rounded-md border border-slate-700 bg-white/5">
+                            <img
+                                src={imageUrl}
+                                alt={product.name}
+                                className="h-full w-full object-contain p-1"
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex h-20 w-full items-center justify-center rounded-md bg-slate-800 text-[11px] text-slate-400">
+                            Sem imagem
+                        </div>
+                    )}
 
-            {/* Visualização dos 4 Níveis de Paletes */}
+                    {/* Detalhes da Mercadoria */}
+                    <div className="w-full text-left">
+                        <h4 className="font-bold text-slate-100 text-xs line-clamp-1">{product.name}</h4>
+                        {product.product_code && (
+                            <p className="text-[10px] text-slate-400 font-mono">Cód: {product.product_code}</p>
+                        )}
+                        {((dock as any).sizeName || product.sizes?.[0]?.name) && (
+                            <p className="text-[10px] text-slate-300 mt-1">
+                                Tamanho: <span className="font-semibold text-blue-400">{(dock as any).sizeName || product.sizes?.[0]?.name}</span>
+                            </p>
+                        )}
+                    </div>
+                </div>
+            ) : null}
+
+            {/* Visualização dos Níveis de Armazenamento */}
             <div className="space-y-1">
                 <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                    Níveis de Armazenamento (Toalhas)
+                    Níveis de Armazenamento
                 </div>
                 {[...levels].reverse().map((lvl) => {
                     const isOccupied = dock.productCount >= lvl.level;
@@ -51,7 +82,7 @@ export default function WarehouseTooltip({ dock, x, y }: WarehouseTooltipProps) 
                             key={lvl.level}
                             className={`flex items-center justify-between rounded px-2 py-1 text-[11px] ${isOccupied
                                 ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                                : "bg-slate-800 text-slate-400"
+                                : "bg-slate-800/60 text-slate-400"
                                 }`}
                         >
                             <span className="font-medium">Nível {lvl.level}</span>
