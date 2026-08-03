@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Boxes, Map as MapIcon } from "lucide-react";
 import { fetchProducts } from "@/services/productService";
 import { fetchDockMeta, buildDockOccupancy, DockOccupancy } from "@/services/wareHouseServices";
 import { Product } from "@/components/productsTable";
 import { supabase } from "@/lib/supabase";
 import WarehouseMap, { WarehouseMapHandle } from "@/components/warehouseMap";
+import WarehouseMap3D from "@/components/warehouseMap3D";
 import WarehouseToolbar from "@/components/warehouseToolbar";
 import WarehouseSidebar from "@/components/WarehouseSidebar";
 import WarehouseModal from "@/components/warehouseModal";
+
+type ViewMode = "2d" | "3d";
 
 export default function WarehousePage() {
     const [products, setProducts] = useState<Product[]>([]);
@@ -16,6 +20,7 @@ export default function WarehousePage() {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedDock, setSelectedDock] = useState<DockOccupancy | null>(null);
     const [highlightedDock, setHighlightedDock] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<ViewMode>("2d");
 
     const mapRef = useRef<WarehouseMapHandle>(null);
 
@@ -48,7 +53,11 @@ export default function WarehousePage() {
 
     const handleSelectDock = (code: string) => {
         setHighlightedDock(code);
-        mapRef.current?.centerOnDock(code);
+        // Centralizar a câmera automaticamente só existe no modo 2D (SVG);
+        // no 3D o usuário navega livremente com o OrbitControls.
+        if (viewMode === "2d") {
+            mapRef.current?.centerOnDock(code);
+        }
         window.setTimeout(() => setHighlightedDock(null), 2500);
     };
 
@@ -65,21 +74,52 @@ export default function WarehousePage() {
             <WarehouseSidebar docks={docks} onSelectDock={handleSelectDock} />
 
             <div className="space-y-3">
-                <div className="flex justify-end">
-                    <WarehouseToolbar
-                        onZoomIn={() => mapRef.current?.zoomIn()}
-                        onZoomOut={() => mapRef.current?.zoomOut()}
-                        onReset={() => mapRef.current?.reset()}
-                        onFitScreen={() => mapRef.current?.fitScreen()}
-                    />
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode("2d")}
+                            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === "2d" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-100"
+                                }`}
+                        >
+                            <MapIcon className="h-4 w-4" strokeWidth={1.75} />
+                            2D
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode("3d")}
+                            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === "3d" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-100"
+                                }`}
+                        >
+                            <Boxes className="h-4 w-4" strokeWidth={1.75} />
+                            3D
+                        </button>
+                    </div>
+
+                    {viewMode === "2d" && (
+                        <WarehouseToolbar
+                            onZoomIn={() => mapRef.current?.zoomIn()}
+                            onZoomOut={() => mapRef.current?.zoomOut()}
+                            onReset={() => mapRef.current?.reset()}
+                            onFitScreen={() => mapRef.current?.fitScreen()}
+                        />
+                    )}
                 </div>
 
-                <WarehouseMap
-                    ref={mapRef}
-                    docks={docks}
-                    onDockClick={setSelectedDock}
-                    highlightedDock={highlightedDock}
-                />
+                {viewMode === "2d" ? (
+                    <WarehouseMap
+                        ref={mapRef}
+                        docks={docks}
+                        onDockClick={setSelectedDock}
+                        highlightedDock={highlightedDock}
+                    />
+                ) : (
+                    <WarehouseMap3D
+                        docks={docks}
+                        onDockClick={setSelectedDock}
+                        highlightedDock={highlightedDock}
+                    />
+                )}
             </div>
 
             <WarehouseModal dock={activeDock} onClose={() => setSelectedDock(null)} onChanged={loadData} />
