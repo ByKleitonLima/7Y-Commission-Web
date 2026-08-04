@@ -86,12 +86,32 @@ function resolveStatus(productCount: number, blocked: boolean): DockStatus {
     return productCount > 0 ? "ocupado" : "livre";
 }
 
+// Um produto "ocupa" uma doca/posição se o campo solto `dock` do produto
+// bate com o código da doca OU se algum item de `sizes` (tamanho/pallet)
+// está alocado nela. É dentro de `sizes` que o nível de verdade fica
+// guardado (a coluna `level` não existe na tabela `products`), então
+// olhamos lá primeiro.
+function productOccupiesDock(product: any, dockCode: string): boolean {
+    if (product.dock === dockCode) return true;
+    return (product.sizes || []).some((s: any) => s.dock === dockCode);
+}
+
+// Descobre em qual nível o produto está alocado NESTA doca específica.
+// Prioriza o nível salvo no `size` cujo dock bate com a doca (é ali que o
+// nível de verdade fica); só cai pro campo solto `product.level` como
+// fallback de compatibilidade com dados antigos/manuais.
+function resolveLevelForDock(product: any, dockCode: string): number {
+    const matchingSize = (product.sizes || []).find((s: any) => s.dock === dockCode);
+    if (matchingSize?.level) return Number(matchingSize.level) || 1;
+    return Number(product.level) || 1;
+}
+
 export function buildDockOccupancy(
     products: Product[],
     meta: Record<string, DockMeta>
 ): DockOccupancy[] {
     return DOCK_DEFINITIONS.map((def) => {
-        const dockProducts = products.filter((p) => (p as any).dock === def.code);
+        const dockProducts = products.filter((p) => productOccupiesDock(p, def.code));
         const m = meta[def.code] ?? { capacityMax: def.defaultCapacity, blocked: false };
         const occupancyPercent =
             m.capacityMax > 0 ? Math.min(100, (dockProducts.length / m.capacityMax) * 100) : 0;
@@ -100,9 +120,9 @@ export function buildDockOccupancy(
 
         const levels: DockLevel[] = def.levels.map((lvl) => {
             if (m.blocked) return { ...lvl, status: "bloqueado" };
-            
+
             const productAtLevel = dockProducts.find(
-                (p: any) => (Number(p.level) || 1) === lvl.level
+                (p: any) => resolveLevelForDock(p, def.code) === lvl.level
             );
 
             if (productAtLevel) {

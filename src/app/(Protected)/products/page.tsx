@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { PackagePlus, Upload } from "lucide-react";
+import { PackagePlus, Upload, AlertTriangle, CheckCircle2, X } from "lucide-react";
 import StatCard from "@/components/statCard";
 import ProductsTable, { Product } from "@/components/productsTable";
 import AddProductModal from "@/components/addProductsModal";
@@ -23,6 +23,26 @@ export default function Products() {
     const [isUploading, setIsUploading] = useState(false);
     const [progress, setProgress] = useState({ sent: 0, total: 0 });
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Modal de confirmação de exclusão (substitui o confirm() nativo do navegador)
+    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Toast de notificação (substitui o alert() nativo do navegador)
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [toastVariant, setToastVariant] = useState<"success" | "error">("success");
+
+    const showToast = (message: string, variant: "success" | "error" = "success") => {
+        setToastVariant(variant);
+        setToastMessage(message);
+    };
+
+    // Esconde o toast automaticamente após alguns segundos
+    useEffect(() => {
+        if (!toastMessage) return;
+        const timer = setTimeout(() => setToastMessage(null), 4000);
+        return () => clearTimeout(timer);
+    }, [toastMessage]);
 
     const loadProducts = async () => {
         setIsLoading(true);
@@ -67,23 +87,44 @@ export default function Products() {
             }
             await refresh();
             await loadProducts();
+            showToast(
+                editingProduct ? "Produto atualizado com sucesso!" : "Produto criado com sucesso!",
+                "success"
+            );
         } catch (err) {
             console.error("Erro ao salvar produto:", err);
+            showToast("Não foi possível salvar o produto. Tente novamente.", "error");
         } finally {
             handleCloseModal();
         }
     };
 
-    const handleDeleteProduct = async (product: Product) => {
+    // Abre o modal de confirmação ao clicar na lixeira da tabela
+    const openDeleteModal = (product: Product) => {
+        setProductToDelete(product);
+    };
+
+    // Executa a exclusão de fato, só depois do usuário confirmar no modal
+    const handleConfirmDelete = async () => {
+        if (!productToDelete) return;
+
+        const target = productToDelete;
+        setProductToDelete(null);
+        setIsDeleting(true);
+
         try {
-            await deleteProduct(product.id);
-            if (product.supplier_code) {
-                await recomputeSupplierProductsCount([product.supplier_code]);
+            await deleteProduct(target.id);
+            if (target.supplier_code) {
+                await recomputeSupplierProductsCount([target.supplier_code]);
             }
             await refresh();
             await loadProducts();
+            showToast(`O produto "${target.name}" foi removido com sucesso.`, "success");
         } catch (err) {
             console.error("Erro ao remover produto:", err);
+            showToast("Não foi possível remover esse produto. Tente novamente.", "error");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -166,10 +207,10 @@ export default function Products() {
                 await recomputeSupplierProductsCount(Array.from(supplierCodesTouched));
                 await refresh();
                 await loadProducts();
-                alert(`Importação concluída!\n- Produtos cadastrados/atualizados: ${importedCount}`);
+                showToast(`Importação concluída! ${importedCount} produto(s) cadastrado(s)/atualizado(s).`, "success");
             } catch (error) {
                 console.error("Erro ao processar arquivo:", error);
-                alert("Erro ao ler o arquivo Excel.");
+                showToast("Erro ao ler o arquivo Excel. Verifique o formato das colunas.", "error");
             } finally {
                 setIsUploading(false);
                 if (fileInputRef.current) fileInputRef.current.value = "";
@@ -181,6 +222,70 @@ export default function Products() {
     return (
         <div className="relative">
             <UploadLoader isLoading={isUploading} progress={progress} />
+
+            {/* TOAST / POPUP DE NOTIFICAÇÃO (substitui alert()) */}
+            {toastMessage && (
+                <div
+                    className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-5 py-4 text-white shadow-2xl border animate-in fade-in slide-in-from-bottom-4 duration-300 ${toastVariant === "success"
+                        ? "bg-gray-900 border-gray-800"
+                        : "bg-red-600 border-red-700"
+                        }`}
+                >
+                    {toastVariant === "success" ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                    ) : (
+                        <AlertTriangle className="h-5 w-5 text-yellow-300 shrink-0" />
+                    )}
+                    <p className="text-sm font-medium">{toastMessage}</p>
+                    <button
+                        onClick={() => setToastMessage(null)}
+                        className="ml-2 rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
+
+            {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (substitui confirm()) */}
+            {productToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-gray-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 text-amber-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Excluir Produto</h3>
+                        </div>
+
+                        <p className="mt-4 text-sm text-gray-600 leading-relaxed">
+                            Tem certeza que deseja excluir o produto{" "}
+                            <strong className="text-gray-900">{productToDelete.name}</strong>?
+                        </p>
+                        <p className="mt-2 text-xs text-red-500 font-medium bg-red-50 p-2.5 rounded-lg border border-red-100">
+                            Essa ação não pode ser desfeita.
+                        </p>
+
+                        <div className="mt-6 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setProductToDelete(null)}
+                                disabled={isDeleting}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                                Não, manter
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDelete}
+                                disabled={isDeleting}
+                                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors shadow-sm disabled:opacity-60"
+                            >
+                                {isDeleting ? "Excluindo..." : "Sim, excluir"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <input
                 type="file"
@@ -227,7 +332,7 @@ export default function Products() {
                 <ProductsTable
                     products={products}
                     onEdit={handleOpenEdit}
-                    onDelete={handleDeleteProduct}
+                    onDelete={openDeleteModal}
                 />
             )}
 

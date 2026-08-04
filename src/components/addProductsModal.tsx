@@ -5,7 +5,12 @@ import { Camera, X, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Product, ProductSize } from "@/components/productsTable";
 import { Supplier } from "@/components/suppliersTable";
-import { getAllowedDockCodes, isDockAllowedForCategory, getDockDefinition } from "@/lib/warehouseLayout";
+import {
+    getAllowedDockCodes,
+    isDockAllowedForCategory,
+    getDockDefinition,
+    TOWEL_DOCK_CODES,
+} from "@/lib/warehouseLayout";
 
 interface AddProductModalProps {
     open: boolean;
@@ -24,11 +29,12 @@ const CATEGORY_BUCKETS: Record<string, string> = {
     "Outros": "outros",
 };
 
-const TOWEL_DOCKS = [
-    "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15",
-    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35",
-    "36", "37", "38", "39", "40", "41", "42", "43"
-];
+// IMPORTANTE: os códigos reais das docas de toalha são gerados em
+// warehouseLayout.ts (ex: "DOCA-01", "DOCA-02", ... "DOCA-43") e
+// exportados como TOWEL_DOCK_CODES. Usar aqui uma lista própria com
+// apenas os números ("01", "02"...) fazia o produto ser salvo com um
+// código que nunca batia com nenhuma doca real do mapa — por isso a
+// mercadoria nunca aparecia no Galpão 2D/3D depois de salva.
 
 export default function AddProductModal({
     open,
@@ -64,7 +70,7 @@ export default function AddProductModal({
 
     const allowedDockCodes = useMemo(() => {
         if (merchandiseType === "toalha") {
-            return TOWEL_DOCKS;
+            return TOWEL_DOCK_CODES;
         }
         return getAllowedDockCodes(category);
     }, [category, merchandiseType]);
@@ -86,11 +92,14 @@ export default function AddProductModal({
             setSizeCode(singleSize?.code || "");
             setSizeDock(singleSize?.dock || productToEdit.dock || "");
             setSizeBundles(singleSize?.quantity || "");
-            
+
             const resolvedLevel = singleSize?.level ?? (productToEdit as any).level;
             setSizeLevel(resolvedLevel !== null && resolvedLevel !== undefined ? String(resolvedLevel) : "");
-            
-            if ((singleSize?.dock && TOWEL_DOCKS.includes(singleSize.dock)) || (productToEdit.dock && TOWEL_DOCKS.includes(productToEdit.dock))) {
+
+            if (
+                (singleSize?.dock && TOWEL_DOCK_CODES.includes(singleSize.dock)) ||
+                (productToEdit.dock && TOWEL_DOCK_CODES.includes(productToEdit.dock))
+            ) {
                 setMerchandiseType("toalha");
             } else {
                 setMerchandiseType("fralda");
@@ -150,7 +159,7 @@ export default function AddProductModal({
         e.preventDefault();
 
         if (sizeDock) {
-            const isTowelAllowed = merchandiseType === "toalha" && TOWEL_DOCKS.includes(sizeDock);
+            const isTowelAllowed = merchandiseType === "toalha" && TOWEL_DOCK_CODES.includes(sizeDock);
             const isFraldaAllowed = merchandiseType === "fralda" && isDockAllowedForCategory(sizeDock, category);
 
             if (!isTowelAllowed && !isFraldaAllowed) {
@@ -186,7 +195,7 @@ export default function AddProductModal({
                 dock: sizeDock || null,
                 color: sizeDock ? color : null,
                 // O nível é enviado dentro de 'sizes', evitando erro de coluna ausente na tabela products
-            } as any); 
+            } as any);
         } finally {
             setIsSaving(false);
         }
@@ -243,7 +252,7 @@ export default function AddProductModal({
                                 value={category}
                                 onChange={(e) => {
                                     setCategory(e.target.value);
-                                    setSizeDock(""); 
+                                    setSizeDock("");
                                     setSizeLevel("");
                                 }}
                                 className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-[#2d2d2d] outline-none"
@@ -334,7 +343,7 @@ export default function AddProductModal({
                                 <h3 className="text-sm font-semibold text-[#2d2d2d]">Alocação na Doca</h3>
                                 <p className="text-xs text-gray-500">Selecione o tipo de mercadoria para listar as docas disponíveis.</p>
                             </div>
-                            
+
                             <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
                                 <button
                                     type="button"

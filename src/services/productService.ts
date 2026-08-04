@@ -34,6 +34,11 @@ export async function fetchProducts(): Promise<Product[]> {
         image_url: p.image_url,
         dock: p.dock || null,
         color: p.color || null,
+        // "level" não é uma coluna da tabela "products" — o nível de cada
+        // tamanho/pallet fica guardado dentro do JSON "sizes" (ver
+        // ProductSize.level). Mantemos aqui só como fallback de leitura
+        // caso algum dia a coluna venha a existir; não deve ser enviado
+        // de volta ao Supabase nas escritas (ver createProduct/updateProduct).
         level: p.level ?? null,
     }));
 }
@@ -49,13 +54,16 @@ export async function createProduct(productData: Omit<Product, "id">) {
                 promo_price_100: productData.promoPrice100 ?? null,
                 bundle_quantity: productData.bundleQuantity || null,
                 category: productData.category || null,
+                // O nível de cada tamanho/doca já vai embutido em cada
+                // item de "sizes" (ProductSize.level). NÃO enviar "level"
+                // solto aqui: a tabela "products" não tem essa coluna e o
+                // Supabase rejeita a escrita com PGRST204.
                 sizes: productData.sizes || [],
                 status: productData.status,
                 supplier_code: productData.supplier_code,
                 image_url: productData.image_url,
                 dock: productData.dock || null,
                 color: productData.color || null,
-                level: productData.level ?? null,
                 updated_at: new Date().toISOString(),
             },
         ])
@@ -75,13 +83,14 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
             promo_price_100: productData.promoPrice100 ?? null,
             bundle_quantity: productData.bundleQuantity || null,
             category: productData.category || null,
+            // Mesma observação do createProduct: o nível vive dentro de
+            // "sizes", não como coluna própria.
             sizes: productData.sizes || [],
             status: productData.status,
             supplier_code: productData.supplier_code,
             image_url: productData.image_url,
             dock: productData.dock || null,
             color: productData.color || null,
-            level: productData.level ?? null,
             updated_at: new Date().toISOString(),
         })
         .eq("id", id)

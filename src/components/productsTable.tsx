@@ -10,7 +10,7 @@ export interface ProductSize {
     quantity: string;
     code: string;
     dock?: string | null;
-    level?: number | null; 
+    level?: number | null;
 }
 
 export interface Product {
@@ -28,7 +28,7 @@ export interface Product {
     image_url?: string | null;
     dock?: string | null;
     color?: string | null;
-    level?: number | null; 
+    level?: number | null;
 }
 
 type StatusFilter = "Todos os status" | "Ativo" | "Inativo";
@@ -226,11 +226,10 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
 
                                 <td className="px-6 py-4">
                                     <span
-                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                            product.status === "Ativo"
-                                                ? "bg-green-50 text-green-700 border border-green-200"
-                                                : "bg-red-50 text-red-700 border border-red-200"
-                                        }`}
+                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${product.status === "Ativo"
+                                            ? "bg-green-50 text-green-700 border border-green-200"
+                                            : "bg-red-50 text-red-700 border border-red-200"
+                                            }`}
                                     >
                                         {product.status}
                                     </span>
@@ -246,11 +245,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                                             <Pencil className="h-4 w-4" />
                                         </button>
                                         <button
-                                            onClick={() => {
-                                                if (confirm(`Deseja remover o produto "${product.name}"?`)) {
-                                                    onDelete(product);
-                                                }
-                                            }}
+                                            onClick={() => onDelete(product)}
                                             className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
                                             title="Excluir"
                                         >
