@@ -39,12 +39,126 @@ function toSceneZ(y: number, h: number) {
     return (y + h / 2 - WAREHOUSE_VIEWBOX.height / 2) * SCALE;
 }
 
+// PRNG determinístico (mesma doca sempre gera a mesma "bagunça" de caixas,
+// em vez de trocar de posição a cada re-render).
+function mulberry32(seed: number) {
+    let a = seed;
+    return function () {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function hashCode(str: string): number {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = (h << 5) - h + str.charCodeAt(i);
+        h |= 0;
+    }
+    return h;
+}
+
+const CARDBOARD_TONES = ["#c8a165", "#d4b483", "#b8935f", "#c9ab78"];
+
 /* ============================================================
- * DOCA REALISTA: plataforma + porta tipo enrolar + faixa de
- * segurança + para-choques + placa numerada, no lugar da caixa
- * lisa anterior.
+ * PORTA-PALETE REAL: montantes azuis + vigas laranja + contraventamento
+ * em X + protetores amarelos na base + pallets com caixas de papelão
+ * variadas empilhadas, no estilo de um armazém logístico de verdade.
  * ============================================================ */
-function DockDoor({
+const RACK_LEVELS = 4;
+const RACK_HEIGHT = 1.9;
+
+function CrossBrace({ x, halfD, height, color }: { x: number; halfD: number; height: number; color: string }) {
+    const dz = halfD * 2;
+    const length = Math.sqrt(height * height + dz * dz);
+    const angle = Math.atan2(dz, height);
+    const thickness = 0.02;
+
+    return (
+        <group position={[x, height / 2, 0]}>
+            <mesh rotation={[angle, 0, 0]}>
+                <boxGeometry args={[thickness, length, thickness]} />
+                <meshStandardMaterial color={color} />
+            </mesh>
+            <mesh rotation={[-angle, 0, 0]}>
+                <boxGeometry args={[thickness, length, thickness]} />
+                <meshStandardMaterial color={color} />
+            </mesh>
+        </group>
+    );
+}
+
+function FootGuard({ x, z }: { x: number; z: number }) {
+    return (
+        <group position={[x, 0.12, z]}>
+            <mesh castShadow>
+                <boxGeometry args={[0.09, 0.24, 0.09]} />
+                <meshStandardMaterial color="#facc15" />
+            </mesh>
+            <mesh position={[0, -0.1, 0.06]} rotation={[0.5, 0, 0]}>
+                <boxGeometry args={[0.09, 0.14, 0.03]} />
+                <meshStandardMaterial color="#facc15" />
+            </mesh>
+        </group>
+    );
+}
+
+// Um "pallet carregado": tábuas de madeira + várias caixas de papelão de
+// tamanhos levemente diferentes, com posição pseudo-aleatória (mas fixa)
+// pra parecer carga empilhada de verdade em vez de um bloco perfeito.
+function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed: number; boxColorHint?: string }) {
+    const rand = useMemo(() => mulberry32(seed), [seed]);
+
+    const boxes = useMemo(() => {
+        const count = 2 + Math.floor(rand() * 3); // 2 a 4 caixas por pallet
+        const cols = count <= 2 ? count : 2;
+        const rows = Math.ceil(count / cols);
+        const cellW = (w * 0.78) / cols;
+        const cellD = (d * 0.78) / rows;
+
+        const list: { x: number; z: number; w: number; d: number; h: number; color: string }[] = [];
+        let i = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (i >= count) break;
+                const bw = cellW * (0.72 + rand() * 0.22);
+                const bd = cellD * (0.72 + rand() * 0.22);
+                const bh = 0.16 + rand() * 0.16;
+                const x = -w * 0.39 + cellW * (c + 0.5) + (rand() - 0.5) * cellW * 0.15;
+                const z = -d * 0.39 + cellD * (r + 0.5) + (rand() - 0.5) * cellD * 0.15;
+                const color = boxColorHint || CARDBOARD_TONES[Math.floor(rand() * CARDBOARD_TONES.length)];
+                list.push({ x, z, w: bw, d: bd, h: bh, color });
+                i++;
+            }
+        }
+        return list;
+    }, [rand, w, d, boxColorHint]);
+
+    return (
+        <group>
+            {/* tábuas do pallet de madeira */}
+            {[-0.28, 0, 0.28].map((offset, i) => (
+                <mesh key={i} position={[0, 0.025, offset * d]} castShadow>
+                    <boxGeometry args={[w * 0.85, 0.05, d * 0.2]} />
+                    <meshStandardMaterial color="#92400e" />
+                </mesh>
+            ))}
+
+            {/* caixas de papelão empilhadas, tamanhos e posições variados */}
+            {boxes.map((b, i) => (
+                <mesh key={i} position={[b.x, 0.05 + b.h / 2, b.z]} castShadow>
+                    <boxGeometry args={[b.w, b.h, b.d]} />
+                    <meshStandardMaterial color={b.color} />
+                </mesh>
+            ))}
+        </group>
+    );
+}
+
+function RackFrame({
     dock,
     highlighted,
     interactive,
@@ -59,15 +173,25 @@ function DockDoor({
     onHoverStart: (dock: DockOccupancy, clientX: number, clientY: number) => void;
     onHoverEnd: () => void;
 }) {
-    const w = dock.width * SCALE * 0.9;
-    const d = dock.height * SCALE * 0.9;
-    const platformH = 0.12;
-    const wallH = 1.55;
-    const canopyDepth = Math.min(d * 0.5, 0.35);
+    const w = dock.width * SCALE * 0.85;
+    const d = dock.height * SCALE * 0.85;
+    const postT = 0.035;
+    const beamT = 0.03;
 
-    const color = dock.blocked
-        ? DOCK_STATUS_COLORS.bloqueado
-        : (dock as any).productColor || DOCK_STATUS_COLORS[dock.status];
+    const levelYs = [0, RACK_HEIGHT / 3, (RACK_HEIGHT / 3) * 2, RACK_HEIGHT];
+
+    const ratio = dock.capacityMax > 0 ? dock.productCount / dock.capacityMax : 0;
+    const loadedLevels = dock.blocked
+        ? 0
+        : Math.max(dock.productCount > 0 ? 1 : 0, Math.round(ratio * RACK_LEVELS));
+
+    // Estrutura no padrão logístico real: montantes azuis, vigas laranja.
+    const postColor = "#1d4ed8";
+    const beamColor = dock.blocked ? DOCK_STATUS_COLORS.bloqueado : "#f97316";
+    const boxColorHint = dock.blocked ? undefined : (dock as any).productColor;
+
+    const halfW = w / 2 - postT / 2;
+    const halfD = d / 2 - postT / 2;
 
     const handlers = interactive
         ? {
@@ -86,64 +210,70 @@ function DockDoor({
         }
         : {};
 
+    const postCorners: [number, number][] = [
+        [-halfW, -halfD],
+        [halfW, -halfD],
+        [-halfW, halfD],
+        [halfW, halfD],
+    ];
+
+    const seedBase = hashCode(dock.code);
+
     return (
         <group position={[toSceneX(dock.x, dock.width), 0, toSceneZ(dock.y, dock.height)]}>
-            {/* plataforma / apron de concreto */}
-            <mesh position={[0, platformH / 2, 0]} receiveShadow castShadow {...handlers}>
-                <boxGeometry args={[w, platformH, d]} />
+            {/* área de seleção/hover invisível cobrindo toda a estrutura,
+                pra não precisar de handler em cada mesh pequena */}
+            <mesh position={[0, RACK_HEIGHT / 2, 0]} visible={false} {...handlers}>
+                <boxGeometry args={[w * 1.1, RACK_HEIGHT + 0.4, d * 1.1]} />
+            </mesh>
+
+            {/* base de concreto sob a estrutura */}
+            <mesh position={[0, 0.03, 0]} receiveShadow>
+                <boxGeometry args={[w * 1.08, 0.06, d * 1.08]} />
                 <meshStandardMaterial color="#94a3b8" />
             </mesh>
 
-            {/* faixa de segurança amarela na borda da plataforma */}
-            <mesh position={[0, platformH + 0.006, d / 2 - 0.035]}>
-                <boxGeometry args={[w, 0.015, 0.06]} />
-                <meshStandardMaterial color="#facc15" />
-            </mesh>
-
-            {/* moldura da porta */}
-            <mesh position={[0, platformH + wallH / 2, -d / 2 + 0.02]}>
-                <boxGeometry args={[w * 0.96, wallH * 1.04, 0.04]} />
-                <meshStandardMaterial color="#334155" />
-            </mesh>
-
-            {/* painel da porta tipo enrolar — a cor reflete status/ocupação */}
-            <mesh position={[0, platformH + wallH / 2, -d / 2 + 0.05]} castShadow>
-                <boxGeometry args={[w * 0.86, wallH, 0.08]} />
-                <meshStandardMaterial
-                    color={color}
-                    emissive={highlighted ? "#3b82f6" : "#000000"}
-                    emissiveIntensity={highlighted ? 0.7 : 0}
-                />
-            </mesh>
-
-            {/* ranhuras horizontais simulando as réguas da porta */}
-            {Array.from({ length: 5 }).map((_, i) => (
-                <mesh key={i} position={[0, platformH + 0.16 + i * (wallH / 5), -d / 2 + 0.095]}>
-                    <boxGeometry args={[w * 0.8, 0.018, 0.01]} />
-                    <meshStandardMaterial color="#1e293b" />
+            {/* 4 montantes verticais azuis */}
+            {postCorners.map(([px, pz], i) => (
+                <mesh key={i} position={[px, RACK_HEIGHT / 2, pz]} castShadow>
+                    <boxGeometry args={[postT, RACK_HEIGHT, postT]} />
+                    <meshStandardMaterial color={postColor} />
                 </mesh>
             ))}
 
-            {/* marquise/canópia sobre a porta */}
-            <mesh position={[0, platformH + wallH + 0.05, -d / 2 + canopyDepth / 2 + 0.04]} castShadow>
-                <boxGeometry args={[w, 0.06, canopyDepth]} />
-                <meshStandardMaterial color="#1e293b" />
-            </mesh>
+            {/* protetores amarelos na base dos dois montantes da frente */}
+            <FootGuard x={-halfW} z={-halfD} />
+            <FootGuard x={halfW} z={-halfD} />
 
-            {/* para-choques nos cantos da doca */}
-            <mesh position={[-w / 2 + 0.05, platformH * 0.7, -d / 2 + 0.06]}>
-                <boxGeometry args={[0.07, platformH * 1.6, 0.07]} />
-                <meshStandardMaterial color="#0f172a" />
-            </mesh>
-            <mesh position={[w / 2 - 0.05, platformH * 0.7, -d / 2 + 0.06]}>
-                <boxGeometry args={[0.07, platformH * 1.6, 0.07]} />
-                <meshStandardMaterial color="#0f172a" />
-            </mesh>
+            {/* contraventamento em X nas duas laterais */}
+            <CrossBrace x={-halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
+            <CrossBrace x={halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
 
-            {/* placa numerada acima da porta */}
+            {/* vigas horizontais laranja (frente e fundo) em cada nível */}
+            {levelYs.map((y, i) => (
+                <group key={i}>
+                    <mesh position={[0, Math.max(y, 0.05), -halfD]} castShadow>
+                        <boxGeometry args={[w - postT, beamT, postT * 1.4]} />
+                        <meshStandardMaterial color={beamColor} />
+                    </mesh>
+                    <mesh position={[0, Math.max(y, 0.05), halfD]} castShadow>
+                        <boxGeometry args={[w - postT, beamT, postT * 1.4]} />
+                        <meshStandardMaterial color={beamColor} />
+                    </mesh>
+                </group>
+            ))}
+
+            {/* pallets carregados com caixas de papelão, um por nível ocupado */}
+            {levelYs.slice(0, loadedLevels).map((y, i) => (
+                <group key={i} position={[0, y + 0.02, 0]}>
+                    <LoadedPallet w={w * 0.82} d={d * 0.82} seed={seedBase + i * 97} boxColorHint={boxColorHint} />
+                </group>
+            ))}
+
+            {/* placa numerada no topo da estrutura, sempre visível */}
             <Text
-                position={[0, platformH + wallH + 0.16, -d / 2 + 0.09]}
-                fontSize={Math.min(w, 0.4) * 0.5}
+                position={[0, RACK_HEIGHT + 0.14, 0]}
+                fontSize={Math.min(w, 0.4) * 0.55}
                 color="#facc15"
                 anchorX="center"
                 anchorY="middle"
@@ -153,8 +283,8 @@ function DockDoor({
 
             {highlighted && (
                 <Text
-                    position={[0, platformH + wallH + 0.5, 0]}
-                    fontSize={0.26}
+                    position={[0, RACK_HEIGHT + 0.42, 0]}
+                    fontSize={0.24}
                     color="#1d4ed8"
                     anchorX="center"
                     anchorY="bottom"
@@ -189,11 +319,6 @@ function PositionPallet({
     const d = dock.height * SCALE * 0.9;
     const occupied = dock.productCount > 0;
     const palletH = 0.08;
-    const boxH = dock.blocked ? 0.3 : 0.4;
-
-    const color = dock.blocked
-        ? DOCK_STATUS_COLORS.bloqueado
-        : (dock as any).productColor || DOCK_STATUS_COLORS.ocupado;
 
     const handlers = interactive
         ? {
@@ -214,32 +339,25 @@ function PositionPallet({
 
     return (
         <group position={[toSceneX(dock.x, dock.width), 0, toSceneZ(dock.y, dock.height)]}>
+            <mesh position={[0, RACK_HEIGHT * 0.15, 0]} visible={false} {...handlers}>
+                <boxGeometry args={[w * 1.05, RACK_HEIGHT * 0.3 + 0.4, d * 1.05]} />
+            </mesh>
+
             {/* pallet de madeira */}
-            <mesh position={[0, palletH / 2, 0]} castShadow receiveShadow {...handlers}>
+            <mesh position={[0, palletH / 2, 0]} castShadow receiveShadow>
                 <boxGeometry args={[w * 0.92, palletH, d * 0.92]} />
-                <meshStandardMaterial color="#a16207" />
+                <meshStandardMaterial color="#92400e" />
             </mesh>
 
             {/* caixa/mercadoria empilhada, só se houver produto na posição */}
             {(occupied || dock.blocked) && (
-                <mesh position={[0, palletH + boxH / 2, 0]} castShadow>
-                    <boxGeometry args={[w * 0.78, boxH, d * 0.78]} />
-                    <meshStandardMaterial
-                        color={color}
-                        emissive={highlighted ? "#3b82f6" : "#000000"}
-                        emissiveIntensity={highlighted ? 0.7 : 0}
-                    />
-                </mesh>
+                <group position={[0, palletH + 0.02, 0]}>
+                    <LoadedPallet w={w * 0.86} d={d * 0.86} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
+                </group>
             )}
 
             {highlighted && (
-                <Text
-                    position={[0, palletH + boxH + 0.3, 0]}
-                    fontSize={0.2}
-                    color="#1d4ed8"
-                    anchorX="center"
-                    anchorY="bottom"
-                >
+                <Text position={[0, 0.7, 0]} fontSize={0.2} color="#1d4ed8" anchorX="center" anchorY="bottom">
                     {dock.code}
                 </Text>
             )}
@@ -613,7 +731,7 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
 
                 {docks.map((dock) =>
                     dock.type === "doca" ? (
-                        <DockDoor
+                        <RackFrame
                             key={dock.code}
                             dock={dock}
                             highlighted={highlightedDock === dock.code}
