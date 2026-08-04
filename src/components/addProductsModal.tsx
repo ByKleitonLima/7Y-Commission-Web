@@ -5,7 +5,7 @@ import { Camera, X, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Product, ProductSize } from "@/components/productsTable";
 import { Supplier } from "@/components/suppliersTable";
-import { getAllowedDockCodes, isDockAllowedForCategory } from "@/lib/warehouseLayout";
+import { getAllowedDockCodes, isDockAllowedForCategory, getDockDefinition } from "@/lib/warehouseLayout";
 
 interface AddProductModalProps {
     open: boolean;
@@ -24,7 +24,6 @@ const CATEGORY_BUCKETS: Record<string, string> = {
     "Outros": "outros",
 };
 
-// Docas extraídas para a opção "Toalha"
 const TOWEL_DOCKS = [
     "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15",
     "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35",
@@ -46,15 +45,13 @@ export default function AddProductModal({
     const [promoPrice100, setPromoPrice100] = useState<number | "">("");
     const [bundleQuantity, setBundleQuantity] = useState("");
 
-    // Estado para Tipo de Mercadoria (Fralda x Toalha)
     const [merchandiseType, setMerchandiseType] = useState<"fralda" | "toalha">("fralda");
 
-    // Estado para Doca, Fardos e Nível do Pallet
     const [sizeName, setSizeName] = useState("");
     const [sizeBundles, setSizeBundles] = useState("");
     const [sizeCode, setSizeCode] = useState("");
     const [sizeDock, setSizeDock] = useState("");
-    const [palletLevel, setPalletLevel] = useState("");
+    const [sizeLevel, setSizeLevel] = useState("");
 
     const [status, setStatus] = useState<"Ativo" | "Inativo">("Ativo");
     const [color, setColor] = useState("#2563eb");
@@ -65,13 +62,16 @@ export default function AddProductModal({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Renderiza as docas permitidas com base no tipo
     const allowedDockCodes = useMemo(() => {
         if (merchandiseType === "toalha") {
             return TOWEL_DOCKS;
         }
         return getAllowedDockCodes(category);
     }, [category, merchandiseType]);
+
+    const selectedDockDef = useMemo(() => (sizeDock ? getDockDefinition(sizeDock) : undefined), [sizeDock]);
+    const isDocaType = selectedDockDef?.type === "doca";
+    const maxLevels = selectedDockDef?.levels?.length || 1;
 
     useEffect(() => {
         if (productToEdit) {
@@ -87,8 +87,7 @@ export default function AddProductModal({
             setSizeCode(singleSize?.code || "");
             setSizeDock(singleSize?.dock || productToEdit.dock || "");
             setSizeBundles(singleSize?.quantity || "");
-            
-            setPalletLevel((singleSize as any)?.pallet_level || (productToEdit as any)?.pallet_level || "");
+            setSizeLevel(String(productToEdit.level ?? singleSize?.level ?? ""));
             
             if (singleSize?.dock && TOWEL_DOCKS.includes(singleSize.dock)) {
                 setMerchandiseType("toalha");
@@ -111,7 +110,7 @@ export default function AddProductModal({
             setSizeBundles("");
             setSizeCode("");
             setSizeDock("");
-            setPalletLevel("");
+            setSizeLevel("");
             setMerchandiseType("fralda");
             setSupplierCode(suppliers[0]?.supplier_code || "");
             setStatus("Ativo");
@@ -149,7 +148,6 @@ export default function AddProductModal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validação da Doca
         if (sizeDock) {
             const isTowelAllowed = merchandiseType === "toalha" && TOWEL_DOCKS.includes(sizeDock);
             const isFraldaAllowed = merchandiseType === "fralda" && isDockAllowedForCategory(sizeDock, category);
@@ -160,21 +158,17 @@ export default function AddProductModal({
             }
         }
 
-        // Validação Obrigatória do Pallet para Toalhas
-        if (merchandiseType === "toalha" && !palletLevel) {
-            alert("Para Toalhas, é obrigatório selecionar o Nível do Pallet.");
-            return;
-        }
+        const level = isDocaType && sizeLevel ? Number(sizeLevel) : null;
 
         setIsSaving(true);
         try {
-            const singleSize: any = {
+            const singleSize: ProductSize = {
                 id: productToEdit?.sizes?.[0]?.id || Math.random().toString(36).slice(2, 10),
                 name: sizeName,
                 quantity: sizeBundles,
                 code: sizeCode || productCode,
                 dock: sizeDock || null,
-                pallet_level: palletLevel || null,
+                level,
             };
 
             await onSave({
@@ -190,7 +184,7 @@ export default function AddProductModal({
                 image_url: imageUrl,
                 dock: sizeDock || null,
                 color: sizeDock ? color : null,
-                pallet_level: palletLevel || null,
+                level,
             } as any); 
         } finally {
             setIsSaving(false);
@@ -339,18 +333,17 @@ export default function AddProductModal({
                                 <p className="text-xs text-gray-500">Selecione o tipo de mercadoria para listar as docas disponíveis.</p>
                             </div>
                             
-                            {/* Toggle de Fralda / Toalha */}
                             <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
                                 <button
                                     type="button"
-                                    onClick={() => { setMerchandiseType("fralda"); setSizeDock(""); setPalletLevel(""); }}
+                                    onClick={() => { setMerchandiseType("fralda"); setSizeDock(""); setSizeLevel(""); }}
                                     className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${merchandiseType === "fralda" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-50"}`}
                                 >
                                     Fralda
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setMerchandiseType("toalha"); setSizeDock(""); }}
+                                    onClick={() => { setMerchandiseType("toalha"); setSizeDock(""); setSizeLevel(""); }}
                                     className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${merchandiseType === "toalha" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-50"}`}
                                 >
                                     Toalha
@@ -407,21 +400,24 @@ export default function AddProductModal({
                             </div>
                         </div>
 
-                        {/* RENDERIZAÇÃO CONDICIONAL: Nível do Pallet (Apenas para Toalhas) */}
-                        {merchandiseType === "toalha" && (
+                        {/* NOVO CAMPO: Seletor Dinâmico de Nível / Palete */}
+                        {isDocaType && (
                             <div className="mt-2 flex flex-col gap-1 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
                                 <label className="text-xs font-semibold text-blue-800">
-                                    Nível do Pallet <span className="text-red-500">*</span>
+                                    Nível / Palete <span className="text-red-500">*</span>
                                 </label>
-                                <p className="text-[11px] text-blue-600 mb-1">Especifique em qual nível (altura) da prateleira a toalha será alocada.</p>
-                                <input
-                                    type="number"
-                                    required
-                                    placeholder="Ex: 1, 2, 3..."
-                                    value={palletLevel}
-                                    onChange={(e) => setPalletLevel(e.target.value)}
+                                <p className="text-[11px] text-blue-600 mb-1">Selecione o nível da estante onde a carga será colocada.</p>
+                                <select
+                                    value={sizeLevel}
+                                    onChange={(e) => setSizeLevel(e.target.value)}
                                     className="h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-xs outline-none focus:border-blue-500"
-                                />
+                                    required
+                                >
+                                    <option value="">Selecione o nível</option>
+                                    {Array.from({ length: maxLevels }, (_, i) => maxLevels - i).map((lvl) => (
+                                        <option key={lvl} value={lvl}>{`Nível ${lvl}`}</option>
+                                    ))}
+                                </select>
                             </div>
                         )}
                     </div>

@@ -8,8 +8,6 @@ import { WAREHOUSE_ROOMS, WAREHOUSE_VIEWBOX, getDockDefinition } from "@/lib/war
 import { DockOccupancy, DOCK_STATUS_COLORS } from "@/services/wareHouseServices";
 import WarehouseTooltip from "@/components/warehouseTooltip";
 
-// O layout 2D é em pixels (na casa dos milhares). Essa escala converte pra
-// um tamanho de cena gerenciável (equivalente a "metros" na visão 3D).
 const SCALE = 0.02;
 const EYE_HEIGHT = 1.1;
 const WALK_SPEED = 3.2;
@@ -39,8 +37,6 @@ function toSceneZ(y: number, h: number) {
     return (y + h / 2 - WAREHOUSE_VIEWBOX.height / 2) * SCALE;
 }
 
-// PRNG determinístico (mesma doca sempre gera a mesma "bagunça" de caixas,
-// em vez de trocar de posição a cada re-render).
 function mulberry32(seed: number) {
     let a = seed;
     return function () {
@@ -63,11 +59,6 @@ function hashCode(str: string): number {
 
 const CARDBOARD_TONES = ["#c8a165", "#d4b483", "#b8935f", "#c9ab78"];
 
-/* ============================================================
- * PORTA-PALETE REAL: montantes azuis + vigas laranja + contraventamento
- * em X + protetores amarelos na base + pallets com caixas de papelão
- * variadas empilhadas, no estilo de um armazém logístico de verdade.
- * ============================================================ */
 const RACK_LEVELS = 4;
 const RACK_HEIGHT = 1.9;
 
@@ -106,14 +97,11 @@ function FootGuard({ x, z }: { x: number; z: number }) {
     );
 }
 
-// Um "pallet carregado": tábuas de madeira + várias caixas de papelão de
-// tamanhos levemente diferentes, com posição pseudo-aleatória (mas fixa)
-// pra parecer carga empilhada de verdade em vez de um bloco perfeito.
 function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed: number; boxColorHint?: string }) {
     const rand = useMemo(() => mulberry32(seed), [seed]);
 
     const boxes = useMemo(() => {
-        const count = 2 + Math.floor(rand() * 3); // 2 a 4 caixas por pallet
+        const count = 2 + Math.floor(rand() * 3);
         const cols = count <= 2 ? count : 2;
         const rows = Math.ceil(count / cols);
         const cellW = (w * 0.78) / cols;
@@ -139,7 +127,6 @@ function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed
 
     return (
         <group>
-            {/* tábuas do pallet de madeira */}
             {[-0.28, 0, 0.28].map((offset, i) => (
                 <mesh key={i} position={[0, 0.025, offset * d]} castShadow>
                     <boxGeometry args={[w * 0.85, 0.05, d * 0.2]} />
@@ -147,7 +134,6 @@ function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed
                 </mesh>
             ))}
 
-            {/* caixas de papelão empilhadas, tamanhos e posições variados */}
             {boxes.map((b, i) => (
                 <mesh key={i} position={[b.x, 0.05 + b.h / 2, b.z]} castShadow>
                     <boxGeometry args={[b.w, b.h, b.d]} />
@@ -180,12 +166,16 @@ function RackFrame({
 
     const levelYs = [0, RACK_HEIGHT / 3, (RACK_HEIGHT / 3) * 2, RACK_HEIGHT];
 
-    const ratio = dock.capacityMax > 0 ? dock.productCount / dock.capacityMax : 0;
-    const loadedLevels = dock.blocked
-        ? 0
-        : Math.max(dock.productCount > 0 ? 1 : 0, Math.round(ratio * RACK_LEVELS));
+    const occupiedLevels = useMemo(
+        () =>
+            new Set(
+                (dock.levels || [])
+                    .filter((l) => l.status === "ocupado")
+                    .map((l) => l.level)
+            ),
+        [dock.levels]
+    );
 
-    // Estrutura no padrão logístico real: montantes azuis, vigas laranja.
     const postColor = "#1d4ed8";
     const beamColor = dock.blocked ? DOCK_STATUS_COLORS.bloqueado : "#f97316";
     const boxColorHint = dock.blocked ? undefined : (dock as any).productColor;
@@ -221,19 +211,15 @@ function RackFrame({
 
     return (
         <group position={[toSceneX(dock.x, dock.width), 0, toSceneZ(dock.y, dock.height)]}>
-            {/* área de seleção/hover invisível cobrindo toda a estrutura,
-                pra não precisar de handler em cada mesh pequena */}
             <mesh position={[0, RACK_HEIGHT / 2, 0]} visible={false} {...handlers}>
                 <boxGeometry args={[w * 1.1, RACK_HEIGHT + 0.4, d * 1.1]} />
             </mesh>
 
-            {/* base de concreto sob a estrutura */}
             <mesh position={[0, 0.03, 0]} receiveShadow>
                 <boxGeometry args={[w * 1.08, 0.06, d * 1.08]} />
                 <meshStandardMaterial color="#94a3b8" />
             </mesh>
 
-            {/* 4 montantes verticais azuis */}
             {postCorners.map(([px, pz], i) => (
                 <mesh key={i} position={[px, RACK_HEIGHT / 2, pz]} castShadow>
                     <boxGeometry args={[postT, RACK_HEIGHT, postT]} />
@@ -241,15 +227,12 @@ function RackFrame({
                 </mesh>
             ))}
 
-            {/* protetores amarelos na base dos dois montantes da frente */}
             <FootGuard x={-halfW} z={-halfD} />
             <FootGuard x={halfW} z={-halfD} />
 
-            {/* contraventamento em X nas duas laterais */}
             <CrossBrace x={-halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
             <CrossBrace x={halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
 
-            {/* vigas horizontais laranja (frente e fundo) em cada nível */}
             {levelYs.map((y, i) => (
                 <group key={i}>
                     <mesh position={[0, Math.max(y, 0.05), -halfD]} castShadow>
@@ -263,14 +246,17 @@ function RackFrame({
                 </group>
             ))}
 
-            {/* pallets carregados com caixas de papelão, um por nível ocupado */}
-            {levelYs.slice(0, loadedLevels).map((y, i) => (
-                <group key={i} position={[0, y + 0.02, 0]}>
-                    <LoadedPallet w={w * 0.82} d={d * 0.82} seed={seedBase + i * 97} boxColorHint={boxColorHint} />
-                </group>
-            ))}
+            {/* Renderização baseada estritamente nos níveis reais preenchidos */}
+            {levelYs.map((y, i) => {
+                const levelNumber = i + 1;
+                if (!occupiedLevels.has(levelNumber)) return null;
+                return (
+                    <group key={i} position={[0, y + 0.02, 0]}>
+                        <LoadedPallet w={w * 0.82} d={d * 0.82} seed={seedBase + i * 97} boxColorHint={boxColorHint} />
+                    </group>
+                );
+            })}
 
-            {/* placa numerada no topo da estrutura, sempre visível */}
             <Text
                 position={[0, RACK_HEIGHT + 0.14, 0]}
                 fontSize={Math.min(w, 0.4) * 0.55}
@@ -296,10 +282,6 @@ function RackFrame({
     );
 }
 
-/* ============================================================
- * POSIÇÃO DE PRATELEIRA: pallet de madeira + caixa do produto
- * em cima (só aparece a caixa quando a posição está ocupada).
- * ============================================================ */
 function PositionPallet({
     dock,
     highlighted,
@@ -343,13 +325,11 @@ function PositionPallet({
                 <boxGeometry args={[w * 1.05, RACK_HEIGHT * 0.3 + 0.4, d * 1.05]} />
             </mesh>
 
-            {/* pallet de madeira */}
             <mesh position={[0, palletH / 2, 0]} castShadow receiveShadow>
                 <boxGeometry args={[w * 0.92, palletH, d * 0.92]} />
                 <meshStandardMaterial color="#92400e" />
             </mesh>
 
-            {/* caixa/mercadoria empilhada, só se houver produto na posição */}
             {(occupied || dock.blocked) && (
                 <group position={[0, palletH + 0.02, 0]}>
                     <LoadedPallet w={w * 0.86} d={d * 0.86} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
@@ -397,10 +377,6 @@ function RoomFloor({ room }: { room: (typeof WAREHOUSE_ROOMS)[number] }) {
     );
 }
 
-/* ============================================================
- * TECLADO: hook simples que mantém em uma ref quais teclas estão
- * pressionadas agora, sem re-renderizar a cada tecla.
- * ============================================================ */
 function useKeyboardState() {
     const keys = useRef<Record<string, boolean>>({});
 
@@ -435,9 +411,6 @@ function collides(pos: THREE.Vector3, obstacles: Obstacle[]): boolean {
     return false;
 }
 
-// Acha a doca/posição pra qual o jogador está olhando (cone estreito à
-// frente da câmera), pra mostrar o tooltip com o produto no modo Andar
-// sem depender do mouse (que fica travado no centro da tela).
 function findLookedAtDock(camera: THREE.Camera, obstacles: Obstacle[], maxDist = 6): DockOccupancy | null {
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
@@ -456,7 +429,7 @@ function findLookedAtDock(camera: THREE.Camera, obstacles: Obstacle[], maxDist =
 
         const toObj = new THREE.Vector2(dx, dz).normalize();
         const dot = dir2.dot(toObj);
-        if (dot < 0.86) continue; // cone estreito, só o que está "na mira"
+        if (dot < 0.86) continue;
 
         const score = dot - dist * 0.02;
         if (score > bestScore) {
@@ -468,10 +441,6 @@ function findLookedAtDock(camera: THREE.Camera, obstacles: Obstacle[], maxDist =
     return best;
 }
 
-/* ============================================================
- * MODO ANDAR: WASD/setas move, mouse olha (via PointerLockControls),
- * com colisão simples contra as docas/posições e limites do galpão.
- * ============================================================ */
 function WalkControls({
     obstacles,
     bounds,
@@ -489,7 +458,6 @@ function WalkControls({
     const controlsRef = useRef<any>(null);
     const keys = useKeyboardState();
 
-    // Posiciona o jogador num ponto seguro (rua ampla) ao entrar no modo Andar.
     useEffect(() => {
         camera.position.copy(spawnPoint);
         camera.rotation.set(0, 0, 0);
@@ -508,7 +476,6 @@ function WalkControls({
             controls.removeEventListener("lock", handleLock);
             controls.removeEventListener("unlock", handleUnlock);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useFrame((_, delta) => {
@@ -541,9 +508,6 @@ function WalkControls({
     return <PointerLockControls ref={controlsRef} />;
 }
 
-/* ============================================================
- * COMPONENTE PRINCIPAL
- * ============================================================ */
 const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(function WarehouseMap3D(
     { docks, onDockClick, highlightedDock, onWalkModeChange },
     ref
@@ -559,8 +523,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
         [sceneWidth, sceneDepth]
     );
 
-    // Ponto de partida do modo Andar: o meio da maior "rua" do layout,
-    // uma área aberta e (na prática) livre de caixas.
     const spawnPoint = useMemo(() => {
         let best: (typeof WAREHOUSE_ROOMS)[number] | null = null;
         let bestArea = 0;
@@ -606,8 +568,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
         onWalkModeChange?.(mode === "walk");
     }, [mode, onWalkModeChange]);
 
-    // Quando volta pro modo mapa, centraliza a câmera de órbita na doca
-    // que foi pedida enquanto ainda estava no modo Andar (busca da sidebar).
     useEffect(() => {
         if (mode !== "orbit" || !pendingCenterCode) return;
         const controls = orbitControlsRef.current;
@@ -719,7 +679,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                     shadow-mapSize-height={2048}
                 />
 
-                {/* Piso base, um pouco maior que o galpão pra dar "moldura" */}
                 <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
                     <planeGeometry args={[sceneWidth * 1.3, sceneDepth * 1.3]} />
                     <meshStandardMaterial color="#1e293b" />
@@ -754,8 +713,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                 )}
 
                 {mode === "orbit" ? (
-                    // Controles estilo Google Maps: arrastar (botão esquerdo) desloca,
-                    // botão direito gira a câmera, scroll dá zoom.
                     <MapControls
                         ref={orbitControlsRef}
                         makeDefault
@@ -780,11 +737,8 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                 )}
             </Canvas>
 
-            {/* Tooltip com foto e dados do produto — segue o mouse no modo mapa,
-                fica fixo na mira central da tela no modo Andar. */}
             {hoveredDock && <WarehouseTooltip dock={hoveredDock} x={tooltipPos.x} y={tooltipPos.y} />}
 
-            {/* Mira central, só visível andando com o mouse travado */}
             {mode === "walk" && walkLocked && (
                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2">
                     <div className="absolute left-1/2 top-1/2 h-0.5 w-4 -translate-x-1/2 -translate-y-1/2 bg-white/80" />
@@ -792,7 +746,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                 </div>
             )}
 
-            {/* Botão para entrar no modo Andar (modo mapa) */}
             {mode === "orbit" && (
                 <button
                     type="button"
@@ -803,7 +756,6 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                 </button>
             )}
 
-            {/* Overlay do modo Andar: instruções, prompt de clique e botão de saída */}
             {mode === "walk" && (
                 <>
                     <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-black/50 px-3 py-1.5 text-[11px] text-white backdrop-blur-sm">

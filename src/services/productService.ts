@@ -34,6 +34,7 @@ export async function fetchProducts(): Promise<Product[]> {
         image_url: p.image_url,
         dock: p.dock || null,
         color: p.color || null,
+        level: p.level ?? null,
     }));
 }
 
@@ -54,6 +55,7 @@ export async function createProduct(productData: Omit<Product, "id">) {
                 image_url: productData.image_url,
                 dock: productData.dock || null,
                 color: productData.color || null,
+                level: productData.level ?? null,
                 updated_at: new Date().toISOString(),
             },
         ])
@@ -79,6 +81,7 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
             image_url: productData.image_url,
             dock: productData.dock || null,
             color: productData.color || null,
+            level: productData.level ?? null,
             updated_at: new Date().toISOString(),
         })
         .eq("id", id)

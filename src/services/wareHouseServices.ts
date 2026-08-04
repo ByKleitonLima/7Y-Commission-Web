@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { DOCK_DEFINITIONS, DockDefinition } from "@/lib/warehouseLayout";
+import { DOCK_DEFINITIONS, DockDefinition, DockLevel } from "@/lib/warehouseLayout";
 import { Product } from "@/components/productsTable";
 
 const TABLE = "warehouse_docks";
@@ -96,10 +96,25 @@ export function buildDockOccupancy(
         const occupancyPercent =
             m.capacityMax > 0 ? Math.min(100, (dockProducts.length / m.capacityMax) * 100) : 0;
 
-        // Cor definida no cadastro do produto, usada para pintar a doca no mapa.
-        // Se houver mais de um produto na mesma doca com cores diferentes,
-        // usa a cor do primeiro (o tooltip lista todos os produtos mesmo assim).
         const productColor = (dockProducts.find((p: any) => p.color)?.color as string) || null;
+
+        const levels: DockLevel[] = def.levels.map((lvl) => {
+            if (m.blocked) return { ...lvl, status: "bloqueado" };
+            
+            const productAtLevel = dockProducts.find(
+                (p: any) => (Number(p.level) || 1) === lvl.level
+            );
+
+            if (productAtLevel) {
+                return {
+                    ...lvl,
+                    status: "ocupado",
+                    product: productAtLevel.name,
+                    product_code: productAtLevel.product_code,
+                };
+            }
+            return { ...lvl, status: "vazio" };
+        });
 
         return {
             ...def,
@@ -110,6 +125,7 @@ export function buildDockOccupancy(
             status: resolveStatus(dockProducts.length, m.blocked),
             products: dockProducts,
             productColor,
+            levels,
         };
     });
 }
