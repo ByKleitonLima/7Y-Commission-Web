@@ -71,7 +71,6 @@ export default function AddProductModal({
 
     const selectedDockDef = useMemo(() => (sizeDock ? getDockDefinition(sizeDock) : undefined), [sizeDock]);
     const isDocaType = selectedDockDef?.type === "doca";
-    const maxLevels = selectedDockDef?.levels?.length || 1;
 
     useEffect(() => {
         if (productToEdit) {
@@ -87,9 +86,11 @@ export default function AddProductModal({
             setSizeCode(singleSize?.code || "");
             setSizeDock(singleSize?.dock || productToEdit.dock || "");
             setSizeBundles(singleSize?.quantity || "");
-            setSizeLevel(String(productToEdit.level ?? singleSize?.level ?? ""));
             
-            if (singleSize?.dock && TOWEL_DOCKS.includes(singleSize.dock)) {
+            const resolvedLevel = singleSize?.level ?? (productToEdit as any).level;
+            setSizeLevel(resolvedLevel !== null && resolvedLevel !== undefined ? String(resolvedLevel) : "");
+            
+            if ((singleSize?.dock && TOWEL_DOCKS.includes(singleSize.dock)) || (productToEdit.dock && TOWEL_DOCKS.includes(productToEdit.dock))) {
                 setMerchandiseType("toalha");
             } else {
                 setMerchandiseType("fralda");
@@ -158,7 +159,7 @@ export default function AddProductModal({
             }
         }
 
-        const level = isDocaType && sizeLevel ? Number(sizeLevel) : null;
+        const level = isDocaType && sizeLevel !== "" ? Number(sizeLevel) : null;
 
         setIsSaving(true);
         try {
@@ -184,7 +185,7 @@ export default function AddProductModal({
                 image_url: imageUrl,
                 dock: sizeDock || null,
                 color: sizeDock ? color : null,
-                level,
+                // O nível é enviado dentro de 'sizes', evitando erro de coluna ausente na tabela products
             } as any); 
         } finally {
             setIsSaving(false);
@@ -243,6 +244,7 @@ export default function AddProductModal({
                                 onChange={(e) => {
                                     setCategory(e.target.value);
                                     setSizeDock(""); 
+                                    setSizeLevel("");
                                 }}
                                 className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-[#2d2d2d] outline-none"
                             >
@@ -389,7 +391,10 @@ export default function AddProductModal({
                                 <label className="text-[11px] font-medium text-gray-500">Doca/Posição</label>
                                 <select
                                     value={sizeDock}
-                                    onChange={(e) => setSizeDock(e.target.value)}
+                                    onChange={(e) => {
+                                        setSizeDock(e.target.value);
+                                        if (!e.target.value) setSizeLevel("");
+                                    }}
                                     className="h-9 w-full rounded-md border border-gray-300 bg-white px-2 text-xs outline-none"
                                 >
                                     <option value="">Sem Doca</option>
@@ -400,7 +405,7 @@ export default function AddProductModal({
                             </div>
                         </div>
 
-                        {/* NOVO CAMPO: Seletor Dinâmico de Nível / Palete */}
+                        {/* Seletor Dinâmico de Nível / Palete */}
                         {isDocaType && (
                             <div className="mt-2 flex flex-col gap-1 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
                                 <label className="text-xs font-semibold text-blue-800">
@@ -414,7 +419,7 @@ export default function AddProductModal({
                                     required
                                 >
                                     <option value="">Selecione o nível</option>
-                                    {Array.from({ length: maxLevels }, (_, i) => maxLevels - i).map((lvl) => (
+                                    {Array.from({ length: selectedDockDef?.levels?.length || 1 }, (_, i) => (selectedDockDef?.levels?.length || 1) - i).map((lvl) => (
                                         <option key={lvl} value={lvl}>{`Nível ${lvl}`}</option>
                                     ))}
                                 </select>
