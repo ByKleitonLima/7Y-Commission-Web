@@ -830,8 +830,34 @@ export const MERCHANDISE_DOCK_CODES: string[] = DOCK_DEFINITIONS
     .filter((d) => d.type === "posicao")
     .map((d) => d.code);
 
+// Todos os códigos de doca/posição existentes, usado como fallback pra
+// nunca deixar o seletor de doca vazio no cadastro de produto.
+const ALL_DOCK_CODES: string[] = DOCK_DEFINITIONS.map((d) => d.code);
+
+// Mesmo padrão de normalização usado em parseSalesFile.ts (NFD + trim):
+// evita que a categoria "Toalha e lenços" deixe de bater com TOWEL_CATEGORY
+// por causa de acento, espaço extra ou diferença de maiúscula/minúscula,
+// o que fazia a opção de doca de toalha simplesmente não aparecer no
+// formulário de cadastro de produto.
+function normalizeCategory(value: string): string {
+    return (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+const NORMALIZED_TOWEL_CATEGORY = normalizeCategory(TOWEL_CATEGORY);
+
 export function getAllowedDockCodes(category: string): string[] {
-    return category === TOWEL_CATEGORY ? TOWEL_DOCK_CODES : MERCHANDISE_DOCK_CODES;
+    const isTowel = normalizeCategory(category) === NORMALIZED_TOWEL_CATEGORY;
+    const codes = isTowel ? TOWEL_DOCK_CODES : MERCHANDISE_DOCK_CODES;
+
+    // Fallback de segurança: se por algum motivo a lista específica vier
+    // vazia, mostra todas as posições em vez de deixar o campo sem nenhuma
+    // opção — é justamente isso que fazia a doca de toalha "sumir".
+    return codes.length > 0 ? codes : ALL_DOCK_CODES;
 }
 
 export function isDockAllowedForCategory(dockCode: string, category: string): boolean {

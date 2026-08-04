@@ -24,6 +24,13 @@ const CATEGORY_BUCKETS: Record<string, string> = {
     "Outros": "outros",
 };
 
+// Docas extraídas para a opção "Toalha"
+const TOWEL_DOCKS = [
+    "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15",
+    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35",
+    "36", "37", "38", "39", "40", "41", "42", "43"
+];
+
 export default function AddProductModal({
     open,
     onClose,
@@ -39,11 +46,15 @@ export default function AddProductModal({
     const [promoPrice100, setPromoPrice100] = useState<number | "">("");
     const [bundleQuantity, setBundleQuantity] = useState("");
 
-    // Estado para Doca e Fardos
+    // Estado para Tipo de Mercadoria (Fralda x Toalha)
+    const [merchandiseType, setMerchandiseType] = useState<"fralda" | "toalha">("fralda");
+
+    // Estado para Doca, Fardos e Nível do Pallet
     const [sizeName, setSizeName] = useState("");
     const [sizeBundles, setSizeBundles] = useState("");
     const [sizeCode, setSizeCode] = useState("");
     const [sizeDock, setSizeDock] = useState("");
+    const [palletLevel, setPalletLevel] = useState("");
 
     const [status, setStatus] = useState<"Ativo" | "Inativo">("Ativo");
     const [color, setColor] = useState("#2563eb");
@@ -51,11 +62,16 @@ export default function AddProductModal({
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [fornecedorDropdownOpen, setFornecedorDropdownOpen] = useState(false);
-    const [isDraggingImage, setIsDraggingImage] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const allowedDockCodes = useMemo(() => getAllowedDockCodes(category), [category]);
+    // Renderiza as docas permitidas com base no tipo
+    const allowedDockCodes = useMemo(() => {
+        if (merchandiseType === "toalha") {
+            return TOWEL_DOCKS;
+        }
+        return getAllowedDockCodes(category);
+    }, [category, merchandiseType]);
 
     useEffect(() => {
         if (productToEdit) {
@@ -71,6 +87,14 @@ export default function AddProductModal({
             setSizeCode(singleSize?.code || "");
             setSizeDock(singleSize?.dock || productToEdit.dock || "");
             setSizeBundles(singleSize?.quantity || "");
+            
+            setPalletLevel((singleSize as any)?.pallet_level || (productToEdit as any)?.pallet_level || "");
+            
+            if (singleSize?.dock && TOWEL_DOCKS.includes(singleSize.dock)) {
+                setMerchandiseType("toalha");
+            } else {
+                setMerchandiseType("fralda");
+            }
 
             setSupplierCode(productToEdit.supplier_code || "");
             setStatus(productToEdit.status || "Ativo");
@@ -87,6 +111,8 @@ export default function AddProductModal({
             setSizeBundles("");
             setSizeCode("");
             setSizeDock("");
+            setPalletLevel("");
+            setMerchandiseType("fralda");
             setSupplierCode(suppliers[0]?.supplier_code || "");
             setStatus("Ativo");
             setColor("#2563eb");
@@ -123,19 +149,32 @@ export default function AddProductModal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (sizeDock && !isDockAllowedForCategory(sizeDock, category)) {
-            alert(`A localização "${sizeDock}" não é permitida para a categoria "${category}".`);
+        // Validação da Doca
+        if (sizeDock) {
+            const isTowelAllowed = merchandiseType === "toalha" && TOWEL_DOCKS.includes(sizeDock);
+            const isFraldaAllowed = merchandiseType === "fralda" && isDockAllowedForCategory(sizeDock, category);
+
+            if (!isTowelAllowed && !isFraldaAllowed) {
+                alert(`A localização "${sizeDock}" não é permitida para o tipo de mercadoria ou categoria selecionada.`);
+                return;
+            }
+        }
+
+        // Validação Obrigatória do Pallet para Toalhas
+        if (merchandiseType === "toalha" && !palletLevel) {
+            alert("Para Toalhas, é obrigatório selecionar o Nível do Pallet.");
             return;
         }
 
         setIsSaving(true);
         try {
-            const singleSize: ProductSize = {
+            const singleSize: any = {
                 id: productToEdit?.sizes?.[0]?.id || Math.random().toString(36).slice(2, 10),
                 name: sizeName,
-                quantity: sizeBundles, // Quantidade de fardos na doca
+                quantity: sizeBundles,
                 code: sizeCode || productCode,
                 dock: sizeDock || null,
+                pallet_level: palletLevel || null,
             };
 
             await onSave({
@@ -151,7 +190,8 @@ export default function AddProductModal({
                 image_url: imageUrl,
                 dock: sizeDock || null,
                 color: sizeDock ? color : null,
-            });
+                pallet_level: palletLevel || null,
+            } as any); 
         } finally {
             setIsSaving(false);
         }
@@ -206,7 +246,10 @@ export default function AddProductModal({
                             <label className="text-sm font-semibold text-[#2d2d2d]">Categoria</label>
                             <select
                                 value={category}
-                                onChange={(e) => setCategory(e.target.value)}
+                                onChange={(e) => {
+                                    setCategory(e.target.value);
+                                    setSizeDock(""); 
+                                }}
                                 className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-[#2d2d2d] outline-none"
                             >
                                 {CATEGORIES.map((c) => (
@@ -290,9 +333,29 @@ export default function AddProductModal({
                     </div>
 
                     <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-                        <div>
-                            <h3 className="text-sm font-semibold text-[#2d2d2d]">Alocação na Doca</h3>
-                            <p className="text-xs text-gray-500">Informe a quantidade de fardos que dará entrada na doca do galpão.</p>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-[#2d2d2d]">Alocação na Doca</h3>
+                                <p className="text-xs text-gray-500">Selecione o tipo de mercadoria para listar as docas disponíveis.</p>
+                            </div>
+                            
+                            {/* Toggle de Fralda / Toalha */}
+                            <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                                <button
+                                    type="button"
+                                    onClick={() => { setMerchandiseType("fralda"); setSizeDock(""); setPalletLevel(""); }}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${merchandiseType === "fralda" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-50"}`}
+                                >
+                                    Fralda
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setMerchandiseType("toalha"); setSizeDock(""); }}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${merchandiseType === "toalha" ? "bg-[#2d2d2d] text-white" : "text-gray-500 hover:bg-gray-50"}`}
+                                >
+                                    Toalha
+                                </button>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-12 gap-2 items-center rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
@@ -343,6 +406,24 @@ export default function AddProductModal({
                                 </select>
                             </div>
                         </div>
+
+                        {/* RENDERIZAÇÃO CONDICIONAL: Nível do Pallet (Apenas para Toalhas) */}
+                        {merchandiseType === "toalha" && (
+                            <div className="mt-2 flex flex-col gap-1 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                                <label className="text-xs font-semibold text-blue-800">
+                                    Nível do Pallet <span className="text-red-500">*</span>
+                                </label>
+                                <p className="text-[11px] text-blue-600 mb-1">Especifique em qual nível (altura) da prateleira a toalha será alocada.</p>
+                                <input
+                                    type="number"
+                                    required
+                                    placeholder="Ex: 1, 2, 3..."
+                                    value={palletLevel}
+                                    onChange={(e) => setPalletLevel(e.target.value)}
+                                    className="h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-xs outline-none focus:border-blue-500"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-3">
