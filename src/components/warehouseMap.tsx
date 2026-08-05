@@ -109,7 +109,7 @@ const WarehouseMap = forwardRef<WarehouseMapHandle, WarehouseMapProps>(function 
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="relative h-[640px] w-full cursor-grab overflow-hidden rounded-xl border border-gray-200 bg-gray-50 active:cursor-grabbing"
+            className="relative h-[calc(100vh-220px)] min-h-[520px] w-full cursor-grab overflow-hidden rounded-xl border border-gray-200 bg-gray-50 active:cursor-grabbing"
         >
             <svg
                 width={WAREHOUSE_VIEWBOX.width}

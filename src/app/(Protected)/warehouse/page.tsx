@@ -48,13 +48,24 @@ export default function WarehousePage() {
         };
     }, [loadData]);
 
+    useEffect(() => {
+        if (isLoading) return;
+
+        const fit = () => mapRef.current?.fitScreen();
+        const frame = requestAnimationFrame(fit);
+        window.addEventListener("resize", fit);
+
+        return () => {
+            cancelAnimationFrame(frame);
+            window.removeEventListener("resize", fit);
+        };
+    }, [isLoading, viewMode]);
+
     const docks = buildDockOccupancy(products, meta);
     const activeDock = selectedDock ? docks.find((d) => d.code === selectedDock.code) ?? null : null;
 
     const handleSelectDock = (code: string) => {
         setHighlightedDock(code);
-        // Centralizar a câmera automaticamente só existe no modo 2D (SVG);
-        // no 3D o usuário navega livremente com o OrbitControls.
         if (viewMode === "2d") {
             mapRef.current?.centerOnDock(code);
         }
@@ -70,11 +81,13 @@ export default function WarehousePage() {
     }
 
     return (
-        <div className="grid grid-cols-1 gap-6 pb-12 lg:grid-cols-[280px_1fr]">
-            <WarehouseSidebar docks={docks} onSelectDock={handleSelectDock} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr] h-[calc(100vh-6rem)] overflow-hidden pb-4">
+            <div className="h-full overflow-y-auto">
+                <WarehouseSidebar docks={docks} onSelectDock={handleSelectDock} />
+            </div>
 
-            <div className="space-y-3">
-                <div className="flex items-center justify-between">
+            <div className="flex flex-col h-full space-y-3 overflow-hidden">
+                <div className="flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
                         <button
                             type="button"
@@ -106,20 +119,23 @@ export default function WarehousePage() {
                     )}
                 </div>
 
-                {viewMode === "2d" ? (
-                    <WarehouseMap
-                        ref={mapRef}
-                        docks={docks}
-                        onDockClick={setSelectedDock}
-                        highlightedDock={highlightedDock}
-                    />
-                ) : (
-                    <WarehouseMap3D
-                        docks={docks}
-                        onDockClick={setSelectedDock}
-                        highlightedDock={highlightedDock}
-                    />
-                )}
+                <div className="flex-1 w-full relative overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    {viewMode === "2d" ? (
+                        <WarehouseMap
+                            ref={mapRef}
+                            docks={docks}
+                            onDockClick={setSelectedDock}
+                            highlightedDock={highlightedDock}
+                        />
+                    ) : (
+                        <WarehouseMap3D
+                            ref={mapRef as any}
+                            docks={docks}
+                            onDockClick={setSelectedDock}
+                            highlightedDock={highlightedDock}
+                        />
+                    )}
+                </div>
             </div>
 
             <WarehouseModal dock={activeDock} onClose={() => setSelectedDock(null)} onChanged={loadData} />

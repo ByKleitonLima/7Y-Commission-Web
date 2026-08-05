@@ -23,7 +23,7 @@ export const NAV_ITEMS = [
     { label: "Vendedores", href: "/sellers", icon: Users, pageTitle: "Vendedores" },
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
     { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
-    { label: "Produtos", href: "/products", icon: Boxes, pageTitle: "Produtos" },
+    { label: "Estoque", href: "/stock", icon: Boxes, pageTitle: "Estoque" },
     { label: "Mapa do Galpão", href: "/warehouse", icon: Warehouse, pageTitle: "Mapa do Galpão" },
     { label: "Importar", href: "/import", icon: Upload, pageTitle: "Importar planilha de comissão" },
 ];
@@ -61,11 +61,10 @@ function Sidebar() {
                             <Link
                                 key={href}
                                 href={href}
-                                className={`flex h-11 items-center gap-3 rounded-lg px-3 transition-colors ${
-                                    active
-                                        ? "bg-white text-[#2d2d2d]"
-                                        : "text-gray-300 hover:bg-white/10"
-                                }`}
+                                className={`flex h-11 items-center gap-3 rounded-lg px-3 transition-colors ${active
+                                    ? "bg-white text-[#2d2d2d]"
+                                    : "text-gray-300 hover:bg-white/10"
+                                    }`}
                             >
                                 <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
                                 <span className="whitespace-nowrap text-sm font-medium opacity-0 invisible pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto">

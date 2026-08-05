@@ -57,93 +57,150 @@ function hashCode(str: string): number {
     return h;
 }
 
-const CARDBOARD_TONES = ["#c8a165", "#d4b483", "#b8935f", "#c9ab78"];
+// ============================================================================
+// MATERIAIS E GEOMETRIAS COMPARTILHADAS
+// ============================================================================
+const SHARED_GEO = new THREE.BoxGeometry(1, 1, 1);
+const BLACK_BOX_TONES = ["#111111", "#1a1a1a", "#222222", "#0a0a0a"];
 
-const RACK_LEVELS = 4;
-const RACK_HEIGHT = 1.9;
+const MATS = {
+    wood: new THREE.MeshLambertMaterial({ color: "#e0b98a" }),
+    post: new THREE.MeshLambertMaterial({ color: "#1d4ed8" }),
+    guardBlack: new THREE.MeshLambertMaterial({ color: "#111111" }),
+    rackBase: new THREE.MeshLambertMaterial({ color: "#94a3b8" }),
+    beamNormal: new THREE.MeshLambertMaterial({ color: "#f97316" }),
+    beamBlocked: new THREE.MeshLambertMaterial({ color: DOCK_STATUS_COLORS.bloqueado }),
+    boxes: BLACK_BOX_TONES.map(color => new THREE.MeshLambertMaterial({ color }))
+};
 
-function CrossBrace({ x, halfD, height, color }: { x: number; halfD: number; height: number; color: string }) {
+function CrossBrace({ x, halfD, height }: { x: number; halfD: number; height: number }) {
     const dz = halfD * 2;
     const length = Math.sqrt(height * height + dz * dz);
     const angle = Math.atan2(dz, height);
-    const thickness = 0.02;
+    const thickness = 0.03;
 
     return (
         <group position={[x, height / 2, 0]}>
-            <mesh rotation={[angle, 0, 0]}>
-                <boxGeometry args={[thickness, length, thickness]} />
-                <meshStandardMaterial color={color} />
-            </mesh>
-            <mesh rotation={[-angle, 0, 0]}>
-                <boxGeometry args={[thickness, length, thickness]} />
-                <meshStandardMaterial color={color} />
-            </mesh>
+            <mesh
+                geometry={SHARED_GEO}
+                material={MATS.post}
+                scale={[thickness, length, thickness]}
+                rotation={[angle, 0, 0]}
+            />
+            <mesh
+                geometry={SHARED_GEO}
+                material={MATS.post}
+                scale={[thickness, length, thickness]}
+                rotation={[-angle, 0, 0]}
+            />
         </group>
     );
 }
 
-function FootGuard({ x, z }: { x: number; z: number }) {
+// Pilares mais finos na largura/profundidade e mais altos (altura aumentada para 1.6)
+function PositionGuards({ w, d, height = 1.6 }: { w: number; d: number; height?: number }) {
+    const halfW = w / 2;
+    const halfD = d / 2;
+    const guardSizeX = 0.10; // Mais fino
+    const guardSizeZ = 0.10; // Mais fino
+
+    const corners: [number, number][] = [
+        [-halfW, -halfD],
+        [halfW, -halfD],
+        [-halfW, halfD],
+        [halfW, halfD],
+    ];
+
     return (
-        <group position={[x, 0.12, z]}>
-            <mesh castShadow>
-                <boxGeometry args={[0.09, 0.24, 0.09]} />
-                <meshStandardMaterial color="#facc15" />
-            </mesh>
-            <mesh position={[0, -0.1, 0.06]} rotation={[0.5, 0, 0]}>
-                <boxGeometry args={[0.09, 0.14, 0.03]} />
-                <meshStandardMaterial color="#facc15" />
-            </mesh>
+        <group>
+            {corners.map(([px, pz], i) => (
+                <mesh
+                    key={`guard-corner-${i}`}
+                    position={[px, height / 2, pz]}
+                    geometry={SHARED_GEO}
+                    material={MATS.guardBlack}
+                    scale={[guardSizeX, height, guardSizeZ]}
+                />
+            ))}
+        </group>
+    );
+}
+
+function WoodenPallet({ w, d }: { w: number; d: number }) {
+    const boardThickness = 0.015;
+    const stringerHeight = 0.06;
+
+    const numTopBoards = 5;
+    const topBoardD = (d * 0.85) / numTopBoards;
+    const topBoards = [];
+    for (let i = 0; i < numTopBoards; i++) {
+        const zPos = -d / 2 + topBoardD / 2 + (i / (numTopBoards - 1)) * (d - topBoardD);
+        topBoards.push(
+            <mesh
+                key={`top-${i}`}
+                position={[0, boardThickness * 1.5 + stringerHeight, zPos]}
+                geometry={SHARED_GEO}
+                material={MATS.wood}
+                scale={[w, boardThickness, topBoardD]}
+            />
+        );
+    }
+
+    const stringerW = w * 0.12;
+    const stringers = [];
+    for (let i = 0; i < 3; i++) {
+        const xPos = -w / 2 + stringerW / 2 + (i / 2) * (w - stringerW);
+        stringers.push(
+            <mesh
+                key={`str-${i}`}
+                position={[xPos, boardThickness + stringerHeight / 2, 0]}
+                geometry={SHARED_GEO}
+                material={MATS.wood}
+                scale={[stringerW, stringerHeight, d]}
+            />
+        );
+    }
+
+    return (
+        <group>
+            {stringers}
+            {topBoards}
         </group>
     );
 }
 
 function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed: number; boxColorHint?: string }) {
-    const rand = useMemo(() => mulberry32(seed), [seed]);
+    const { boxIndex, boxH } = useMemo(() => {
+        const rand = mulberry32(seed);
+        return {
+            boxIndex: Math.floor(rand() * MATS.boxes.length),
+            boxH: 0.30 + rand() * 0.10
+        };
+    }, [seed]);
 
-    const boxes = useMemo(() => {
-        const count = 2 + Math.floor(rand() * 3);
-        const cols = count <= 2 ? count : 2;
-        const rows = Math.ceil(count / cols);
-        const cellW = (w * 0.78) / cols;
-        const cellD = (d * 0.78) / rows;
+    const customMat = useMemo(() => boxColorHint ? new THREE.MeshLambertMaterial({ color: boxColorHint }) : null, [boxColorHint]);
+    const boxMat = customMat || MATS.boxes[boxIndex];
 
-        const list: { x: number; z: number; w: number; d: number; h: number; color: string }[] = [];
-        let i = 0;
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                if (i >= count) break;
-                const bw = cellW * (0.72 + rand() * 0.22);
-                const bd = cellD * (0.72 + rand() * 0.22);
-                const bh = 0.16 + rand() * 0.16;
-                const x = -w * 0.39 + cellW * (c + 0.5) + (rand() - 0.5) * cellW * 0.15;
-                const z = -d * 0.39 + cellD * (r + 0.5) + (rand() - 0.5) * cellD * 0.15;
-                const color = boxColorHint || CARDBOARD_TONES[Math.floor(rand() * CARDBOARD_TONES.length)];
-                list.push({ x, z, w: bw, d: bd, h: bh, color });
-                i++;
-            }
-        }
-        return list;
-    }, [rand, w, d, boxColorHint]);
+    const boxW = w * 0.78;
+    const boxD = d * 0.78;
+    const palletHeight = 0.09;
 
     return (
         <group>
-            {[-0.28, 0, 0.28].map((offset, i) => (
-                <mesh key={i} position={[0, 0.025, offset * d]} castShadow>
-                    <boxGeometry args={[w * 0.85, 0.05, d * 0.2]} />
-                    <meshStandardMaterial color="#92400e" />
-                </mesh>
-            ))}
-
-            {boxes.map((b, i) => (
-                <mesh key={i} position={[b.x, 0.05 + b.h / 2, b.z]} castShadow>
-                    <boxGeometry args={[b.w, b.h, b.d]} />
-                    <meshStandardMaterial color={b.color} />
-                </mesh>
-            ))}
+            <WoodenPallet w={w} d={d} />
+            <mesh
+                position={[0, palletHeight + boxH / 2, 0]}
+                geometry={SHARED_GEO}
+                material={boxMat}
+                scale={[boxW, boxH, boxD]}
+            />
         </group>
     );
 }
 
+// ============================================================================
+// RackFrame (Porta-Paletes)
+// ============================================================================
 function RackFrame({
     dock,
     highlighted,
@@ -159,12 +216,14 @@ function RackFrame({
     onHoverStart: (dock: DockOccupancy, clientX: number, clientY: number) => void;
     onHoverEnd: () => void;
 }) {
-    const w = dock.width * SCALE * 0.85;
-    const d = dock.height * SCALE * 0.85;
-    const postT = 0.035;
-    const beamT = 0.03;
+    const rackHeight = 3.6;
 
-    const levelYs = [0, RACK_HEIGHT / 3, (RACK_HEIGHT / 3) * 2, RACK_HEIGHT];
+    const w = dock.width * SCALE * 0.96;
+    const d = dock.height * SCALE * 0.96;
+    const postT = 0.05;
+    const beamT = 0.045;
+
+    const levelYs = [0, rackHeight / 3, (rackHeight / 3) * 2, rackHeight];
 
     const occupiedLevels = useMemo(
         () =>
@@ -176,8 +235,7 @@ function RackFrame({
         [dock.levels]
     );
 
-    const postColor = "#1d4ed8";
-    const beamColor = dock.blocked ? DOCK_STATUS_COLORS.bloqueado : "#f97316";
+    const beamMaterial = dock.blocked ? MATS.beamBlocked : MATS.beamNormal;
     const boxColorHint = dock.blocked ? undefined : (dock as any).productColor;
 
     const halfW = w / 2 - postT / 2;
@@ -211,42 +269,47 @@ function RackFrame({
 
     return (
         <group position={[toSceneX(dock.x, dock.width), 0, toSceneZ(dock.y, dock.height)]}>
-            <mesh position={[0, RACK_HEIGHT / 2, 0]} visible={false} {...handlers}>
-                <boxGeometry args={[w * 1.1, RACK_HEIGHT + 0.4, d * 1.1]} />
+            <mesh position={[0, rackHeight / 2, 0]} visible={false} {...handlers}>
+                <boxGeometry args={[w * 1.1, rackHeight + 0.4, d * 1.1]} />
             </mesh>
 
-            <mesh position={[0, 0.03, 0]} receiveShadow>
-                <boxGeometry args={[w * 1.08, 0.06, d * 1.08]} />
-                <meshStandardMaterial color="#94a3b8" />
-            </mesh>
+            <mesh
+                position={[0, 0.03, 0]}
+                geometry={SHARED_GEO}
+                material={MATS.rackBase}
+                scale={[w * 1.08, 0.06, d * 1.08]}
+            />
 
             {postCorners.map(([px, pz], i) => (
-                <mesh key={i} position={[px, RACK_HEIGHT / 2, pz]} castShadow>
-                    <boxGeometry args={[postT, RACK_HEIGHT, postT]} />
-                    <meshStandardMaterial color={postColor} />
-                </mesh>
+                <mesh
+                    key={i}
+                    position={[px, rackHeight / 2, pz]}
+                    geometry={SHARED_GEO}
+                    material={MATS.post}
+                    scale={[postT, rackHeight, postT]}
+                />
             ))}
 
-            <FootGuard x={-halfW} z={-halfD} />
-            <FootGuard x={halfW} z={-halfD} />
-
-            <CrossBrace x={-halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
-            <CrossBrace x={halfW} halfD={halfD} height={RACK_HEIGHT} color={postColor} />
+            <CrossBrace x={-halfW} halfD={halfD} height={rackHeight} />
+            <CrossBrace x={halfW} halfD={halfD} height={rackHeight} />
 
             {levelYs.map((y, i) => (
                 <group key={i}>
-                    <mesh position={[0, Math.max(y, 0.05), -halfD]} castShadow>
-                        <boxGeometry args={[w - postT, beamT, postT * 1.4]} />
-                        <meshStandardMaterial color={beamColor} />
-                    </mesh>
-                    <mesh position={[0, Math.max(y, 0.05), halfD]} castShadow>
-                        <boxGeometry args={[w - postT, beamT, postT * 1.4]} />
-                        <meshStandardMaterial color={beamColor} />
-                    </mesh>
+                    <mesh
+                        position={[0, Math.max(y, 0.05), -halfD]}
+                        geometry={SHARED_GEO}
+                        material={beamMaterial}
+                        scale={[w - postT, beamT, postT * 1.4]}
+                    />
+                    <mesh
+                        position={[0, Math.max(y, 0.05), halfD]}
+                        geometry={SHARED_GEO}
+                        material={beamMaterial}
+                        scale={[w - postT, beamT, postT * 1.4]}
+                    />
                 </group>
             ))}
 
-            {/* Renderização baseada estritamente nos níveis reais preenchidos */}
             {levelYs.map((y, i) => {
                 const levelNumber = i + 1;
                 if (!occupiedLevels.has(levelNumber)) return null;
@@ -258,7 +321,7 @@ function RackFrame({
             })}
 
             <Text
-                position={[0, RACK_HEIGHT + 0.14, 0]}
+                position={[0, rackHeight + 0.14, 0]}
                 fontSize={Math.min(w, 0.4) * 0.55}
                 color="#facc15"
                 anchorX="center"
@@ -269,7 +332,7 @@ function RackFrame({
 
             {highlighted && (
                 <Text
-                    position={[0, RACK_HEIGHT + 0.42, 0]}
+                    position={[0, rackHeight + 0.42, 0]}
                     fontSize={0.24}
                     color="#1d4ed8"
                     anchorX="center"
@@ -282,6 +345,9 @@ function RackFrame({
     );
 }
 
+// ============================================================================
+// PositionPallet (Demais Docas)
+// ============================================================================
 function PositionPallet({
     dock,
     highlighted,
@@ -297,10 +363,11 @@ function PositionPallet({
     onHoverStart: (dock: DockOccupancy, clientX: number, clientY: number) => void;
     onHoverEnd: () => void;
 }) {
+    const rackHeight = 3.6;
+
     const w = dock.width * SCALE * 0.9;
     const d = dock.height * SCALE * 0.9;
     const occupied = dock.productCount > 0;
-    const palletH = 0.08;
 
     const handlers = interactive
         ? {
@@ -321,23 +388,22 @@ function PositionPallet({
 
     return (
         <group position={[toSceneX(dock.x, dock.width), 0, toSceneZ(dock.y, dock.height)]}>
-            <mesh position={[0, RACK_HEIGHT * 0.15, 0]} visible={false} {...handlers}>
-                <boxGeometry args={[w * 1.05, RACK_HEIGHT * 0.3 + 0.4, d * 1.05]} />
+            <mesh position={[0, rackHeight * 0.15, 0]} visible={false} {...handlers}>
+                <boxGeometry args={[w * 1.05, rackHeight * 0.3 + 0.4, d * 1.05]} />
             </mesh>
 
-            <mesh position={[0, palletH / 2, 0]} castShadow receiveShadow>
-                <boxGeometry args={[w * 0.92, palletH, d * 0.92]} />
-                <meshStandardMaterial color="#92400e" />
-            </mesh>
+            <group>
+                {(occupied || dock.blocked) ? (
+                    <LoadedPallet w={w * 0.92} d={d * 0.92} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
+                ) : (
+                    <WoodenPallet w={w * 0.92} d={d * 0.92} />
+                )}
 
-            {(occupied || dock.blocked) && (
-                <group position={[0, palletH + 0.02, 0]}>
-                    <LoadedPallet w={w * 0.86} d={d * 0.86} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
-                </group>
-            )}
+                <PositionGuards w={w} d={d} height={1.6} />
+            </group>
 
             {highlighted && (
-                <Text position={[0, 0.7, 0]} fontSize={0.2} color="#1d4ed8" anchorX="center" anchorY="bottom">
+                <Text position={[0, 1.8, 0]} fontSize={0.2} color="#1d4ed8" anchorX="center" anchorY="bottom">
                     {dock.code}
                 </Text>
             )}
@@ -352,9 +418,9 @@ function RoomFloor({ room }: { room: (typeof WAREHOUSE_ROOMS)[number] }) {
 
     return (
         <group position={[toSceneX(room.x, room.width), isHeader ? 0.06 : 0.01, toSceneZ(room.y, room.height)]}>
-            <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
                 <planeGeometry args={[w, d]} />
-                <meshStandardMaterial
+                <meshBasicMaterial
                     color={room.fill || (room.isStreet ? "#cbd5e1" : "#f1f5f9")}
                     transparent={!room.isStreet && !isHeader}
                     opacity={room.isStreet || isHeader ? 1 : 0.35}
@@ -661,27 +727,24 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
     }
 
     return (
-        <div ref={containerRef} className="relative h-[640px] w-full overflow-hidden rounded-xl border border-gray-200 bg-[#0f172a]">
+        <div ref={containerRef} className="relative h-[calc(100vh-220px)] min-h-[520px] w-full overflow-hidden rounded-xl border border-gray-200 bg-[#0f172a]">
             <Canvas
-                shadows
+                gl={{ antialias: false, powerPreference: "high-performance" }}
                 camera={{
                     position: initialCamera.position.toArray(),
                     fov: 45,
                 }}
             >
                 <color attach="background" args={["#0f172a"]} />
-                <ambientLight intensity={0.65} />
+                <ambientLight intensity={0.8} />
                 <directionalLight
                     position={[sceneWidth * 0.4, sceneWidth * 0.9, sceneDepth * 0.3]}
-                    intensity={1.15}
-                    castShadow
-                    shadow-mapSize-width={2048}
-                    shadow-mapSize-height={2048}
+                    intensity={1.0}
                 />
 
-                <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
                     <planeGeometry args={[sceneWidth * 1.3, sceneDepth * 1.3]} />
-                    <meshStandardMaterial color="#1e293b" />
+                    <meshBasicMaterial color="#1e293b" />
                 </mesh>
 
                 {WAREHOUSE_ROOMS.map((room) => (
@@ -765,7 +828,7 @@ const WarehouseMap3D = forwardRef<WarehouseMap3DHandle, WarehouseMap3DProps>(fun
                     <button
                         type="button"
                         onClick={exitWalkMode}
-                        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-[#2d2d2d] shadow-lg transition-colors hover:bg-gray-100"
+                        className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-[#2d2d2d] shadow-lg transition-colors hover:bg-gray-150"
                     >
                         Sair do modo Andar
                     </button>
