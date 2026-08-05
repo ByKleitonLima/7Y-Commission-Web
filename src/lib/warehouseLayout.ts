@@ -80,6 +80,12 @@ interface BuiltBlock {
 
 /* ============================================================
  * FÁBRICA DO GALPÃO 1
+ *
+ * Layout replicado a partir da referência visual do galpão 1:
+ * RUA 017 (topo) -> RUA 016 -> RUA 013 -> RUA 12..07 (docas
+ * emparelhadas à direita) -> RUA 04/03 (com Estoque de Amostras
+ * e RUA 02/06/05 na coluna direita) -> bloco "AQUI SÃO PALLETS"
+ * (docas numeradas 01 a 43, em formato de escada) + área "INÍCIO".
  * ============================================================ */
 
 function buildGalpao1Block(
@@ -164,46 +170,30 @@ function buildGalpao1Block(
     const corridorTopY = cursorY;
 
     {
+        // Linha curta (6 posições) + doca larga isolada à direita — igual à referência.
         defs.push(...row("RUA 017", 6, LEFT_X, cursorY, COL_W, COL_H));
         defs.push(single("RUA 017", SIDE_X, cursorY, SIDE_W, COL_H));
         cursorY += COL_H + BLOCK_GAP;
     }
 
-    /* ---------- RUA 016 / RUA 015 ---------- */
+    /* ---------- RUA 016 (grade de 7 colunas + 2 docas largas à direita) ---------- */
     {
-        const w6 = 6 * (COL_W + GAP) - GAP;
-
-        defs.push(...row("RUA 016", 6, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...row("RUA 016", 7, LEFT_X, cursorY, COL_W, COL_H));
         defs.push(single("RUA 016", SIDE_X, cursorY, SIDE_W, COL_H));
         cursorY += COL_H + GAP;
 
-        rooms.push({ id: `${codePrefix}-rua-016`, x: LEFT_X, y: cursorY, width: w6, height: BAND_H_SM, label: "RUA 016", isStreet: true });
-        defs.push(single("RUA 016", SIDE_X, cursorY, SIDE_W, BAND_H_SM));
+        defs.push(...row("RUA 016", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(single("RUA 016", SIDE_X, cursorY, SIDE_W, COL_H));
+        cursorY += COL_H + GAP;
+
+        rooms.push({ id: `${codePrefix}-rua-016`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H_SM, label: "RUA 016", isStreet: true });
         cursorY += BAND_H_SM + GAP;
 
-        const rightStreetY = cursorY;
-
-        defs.push(...row("RUA 016", 6, LEFT_X, cursorY, COL_W, COL_H));
-        cursorY += COL_H + GAP;
-
-        defs.push(...row("RUA 015", 6, LEFT_X, cursorY, COL_W, COL_H));
-        cursorY += COL_H + GAP;
-
-        rooms.push({ id: `${codePrefix}-rua-015`, x: LEFT_X, y: cursorY, width: w6, height: BAND_H_SM, label: "RUA 015", isStreet: true });
-        cursorY += BAND_H_SM + GAP;
-
-        const rightStreetH = cursorY - rightStreetY - GAP;
-        rooms.push({ id: `${codePrefix}-rua-direita-g5`, x: SIDE_X, y: rightStreetY, width: SIDE_W, height: rightStreetH, label: "RUA", isStreet: true });
-
-        defs.push(...row("RUA 015", 6, LEFT_X, cursorY, COL_W, COL_H));
-        defs.push(single("RUA 015", SIDE_X, cursorY, SIDE_W, COL_H));
-        cursorY += COL_H + GAP;
-
-        defs.push(single("RUA 015", SIDE_X, cursorY, SIDE_W, COL_H));
+        defs.push(...row("RUA 016", 7, LEFT_X, cursorY, COL_W, COL_H));
         cursorY += COL_H + BLOCK_GAP;
     }
 
-    /* ---------- RUA 013 ---------- */
+    /* ---------- RUA 013 (grade de 7 colunas + doca larga e docas emparelhadas) ---------- */
     {
         defs.push(...row("RUA 013", 7, LEFT_X, cursorY, COL_W, COL_H));
         defs.push(single("RUA 013", SIDE_X, cursorY, SIDE_W, COL_H));
@@ -215,87 +205,94 @@ function buildGalpao1Block(
 
         defs.push(...row("RUA 013", 7, LEFT_X, cursorY, COL_W, COL_H));
         defs.push(...pairRow("RUA 013", SIDE_X, cursorY));
+        cursorY += COL_H + GAP;
+
+        defs.push(...row("RUA 013", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...pairRow("RUA 013", SIDE_X, cursorY));
         cursorY += COL_H + BLOCK_GAP;
     }
 
-    /* ---------- RUAS 012 ATÉ 007 ---------- */
+    /* ---------- RUAS 12 A 07 (docas emparelhadas à direita) ----------
+     * Na referência: RUA 12 e RUA 07 têm 1 linha cada; RUA 11, 10, 09 e
+     * 08 têm 2 linhas cada — por isso o array abaixo controla `rows`
+     * por rua em vez de repetir sempre 2 linhas.
+     */
     {
-        defs.push(...row("RUA 012", 7, LEFT_X, cursorY, COL_W, COL_H));
-        defs.push(...pairRow("RUA 012", SIDE_X, cursorY));
-        cursorY += COL_H + GAP;
+        const midStreets: { label: string; rows: number }[] = [
+            { label: "RUA 12", rows: 1 },
+            { label: "RUA 11", rows: 2 },
+            { label: "RUA 10", rows: 2 },
+            { label: "RUA 09", rows: 2 },
+            { label: "RUA 08", rows: 2 },
+            { label: "RUA 07", rows: 1 },
+        ];
 
-        rooms.push({ id: `${codePrefix}-rua-012-l`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H_SM, label: "RUA 012", isStreet: true });
-        rooms.push({ id: `${codePrefix}-rua-012-r`, x: SIDE_X, y: cursorY, width: SIDE_W, height: BAND_H_SM, label: "RUA 012", isStreet: true });
-        cursorY += BAND_H_SM + GAP;
+        for (const street of midStreets) {
+            for (let r = 0; r < street.rows; r++) {
+                defs.push(...row(street.label, 7, LEFT_X, cursorY, COL_W, COL_H));
+                defs.push(...pairRow(street.label, SIDE_X, cursorY));
+                cursorY += COL_H + GAP;
+            }
 
-        defs.push(...row("RUA 012", 7, LEFT_X, cursorY, COL_W, COL_H));
-        defs.push(...pairRow("RUA 012", SIDE_X, cursorY));
-        cursorY += COL_H + GAP;
-
-        for (const rua of ["011", "010", "009", "008", "007"]) {
-            const ruaLabel = `RUA ${rua}`;
-
-            defs.push(...row(ruaLabel, 7, LEFT_X, cursorY, COL_W, COL_H));
-            defs.push(...pairRow(ruaLabel, SIDE_X, cursorY));
-            cursorY += COL_H + GAP;
-
-            rooms.push({ id: `${codePrefix}-rua-${rua}-l`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H_SM, label: ruaLabel, isStreet: true });
-            rooms.push({ id: `${codePrefix}-rua-${rua}-r`, x: SIDE_X, y: cursorY, width: SIDE_W, height: BAND_H_SM, label: ruaLabel, isStreet: true });
+            const slug = street.label.replace(/\s+/g, "-").toLowerCase();
+            rooms.push({ id: `${codePrefix}-${slug}-l`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H_SM, label: street.label, isStreet: true });
+            rooms.push({ id: `${codePrefix}-${slug}-r`, x: SIDE_X, y: cursorY, width: SIDE_W, height: BAND_H_SM, label: street.label, isStreet: true });
             cursorY += BAND_H_SM + GAP;
-
-            defs.push(...row(ruaLabel, 7, LEFT_X, cursorY, COL_W, COL_H));
-            defs.push(...pairRow(ruaLabel, SIDE_X, cursorY));
-            cursorY += COL_H + GAP;
         }
         cursorY += BLOCK_GAP - GAP;
     }
 
-    /* ---------- RUA 004 & RUA 003 ---------- */
+    /* ---------- RUA 04 / RUA 03 + coluna direita (Amostras / RUA 02, 06, 05) ---------- */
     {
         let ry = cursorY;
 
-        defs.push(...row("RUA 004", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...row("RUA 04", 7, LEFT_X, cursorY, COL_W, COL_H));
         cursorY += COL_H + GAP;
 
-        defs.push(single("RUA 004", SIDE_X, ry, SIDE_W, COL_H));
-        ry += COL_H + GAP;
-        defs.push(single("RUA 004", SIDE_X, ry, SIDE_W, COL_H));
-        ry += COL_H + GAP;
-        defs.push(...pairRow("RUA 004", SIDE_X, ry));
-        ry += COL_H + GAP;
-
-        rooms.push({ id: `${codePrefix}-rua-004-l`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H, label: "RUA 004", isStreet: true });
+        rooms.push({ id: `${codePrefix}-rua-04`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H, label: "RUA 04", isStreet: true });
         cursorY += BAND_H + GAP;
 
-        rooms.push({ id: `${codePrefix}-rua-006`, x: SIDE_X, y: ry, width: SIDE_W, height: BAND_H_SM, label: "RUA 006", isStreet: true });
-        ry += BAND_H_SM + GAP;
-
-        defs.push(...row("RUA 004", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...row("RUA 04", 7, LEFT_X, cursorY, COL_W, COL_H));
         cursorY += COL_H + GAP;
-        defs.push(...pairRow("RUA 004", SIDE_X, ry));
-        ry += COL_H + GAP;
-
-        defs.push(...row("RUA 003", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...row("RUA 04", 7, LEFT_X, cursorY, COL_W, COL_H));
         cursorY += COL_H + GAP;
-        defs.push(single("RUA 003", SIDE_X, ry, SIDE_W, COL_H));
-        ry += COL_H + GAP;
-        defs.push(single("RUA 003", SIDE_X, ry, SIDE_W, COL_H));
-        ry += COL_H + GAP;
 
-        rooms.push({ id: `${codePrefix}-rua-003-l`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H, label: "RUA 003", isStreet: true });
+        rooms.push({ id: `${codePrefix}-rua-03`, x: LEFT_X, y: cursorY, width: LEFT_WIDTH, height: BAND_H, label: "RUA 03", isStreet: true });
         cursorY += BAND_H + GAP;
 
-        defs.push(...pairRow("RUA 003", SIDE_X, ry));
-        ry += COL_H + GAP;
-        rooms.push({ id: `${codePrefix}-rua-005`, x: SIDE_X, y: ry, width: SIDE_W, height: BAND_H_SM, label: "RUA 005", isStreet: true });
-        ry += BAND_H_SM + GAP;
-
-        defs.push(...row("RUA 003", 7, LEFT_X, cursorY, COL_W, COL_H));
+        defs.push(...row("RUA 03", 7, LEFT_X, cursorY, COL_W, COL_H));
         cursorY += COL_H + GAP;
-        defs.push(...pairRow("RUA 003", SIDE_X, ry));
-        ry += COL_H + GAP;
-        defs.push(single("RUA 003", SIDE_X, ry, SIDE_W, COL_H));
-        ry += COL_H + GAP;
+
+        // Coluna direita: Estoque de Amostras no topo, depois docas
+        // emparelhadas sob as ruas 02 / 06 / 02 / 05 / 02 (nesta ordem
+        // exata, igual à referência).
+        const estoqueH = COL_H;
+        const amostras = cell("ESTOQUE AMOSTRAS", SIDE_X, ry, SIDE_W, estoqueH);
+        amostras.label = "ESTOQUE AMOSTRAS";
+        amostras.shortLabel = "AMOSTRAS";
+        defs.push(amostras);
+        ry += estoqueH + GAP;
+
+        const sideLabels = ["RUA 02", "RUA 06", "RUA 02", "RUA 05"];
+
+        sideLabels.forEach((label, i) => {
+            rooms.push({
+                id: `${codePrefix}-side-${i}-${label.replace(/\s+/g, "-")}`,
+                x: SIDE_X,
+                y: ry,
+                width: SIDE_W,
+                height: BAND_H_SM,
+                label,
+                isStreet: true,
+            });
+            ry += BAND_H_SM + GAP;
+
+            defs.push(...pairRow(label, SIDE_X, ry));
+            ry += COL_H + GAP;
+        });
+
+        rooms.push({ id: `${codePrefix}-side-final-rua-02`, x: SIDE_X, y: ry, width: SIDE_W, height: BAND_H_SM, label: "RUA 02", isStreet: true });
+        ry += BAND_H_SM + GAP;
 
         cursorY = Math.max(cursorY, ry) + BLOCK_GAP;
     }
@@ -314,7 +311,7 @@ function buildGalpao1Block(
         isStreet: true,
     });
 
-    /* ---------- BLOCO DE CAIXAS / DOCAS (01 A 43) ---------- */
+    /* ---------- BLOCO DE CAIXAS / DOCAS (01 A 43) — "AQUI SÃO PALLETS" ---------- */
     {
         const ITEM_W = (LEFT_WIDTH - 14 * GAP) / 15;
         const ITEM_H = 26;
@@ -387,6 +384,7 @@ function buildGalpao1Block(
         }
 
         const leftBottomY = startY + ITEM_H + GAP + 9 * (ITEM_H + GAP);
+
         cursorY = leftBottomY + 40;
     }
 
