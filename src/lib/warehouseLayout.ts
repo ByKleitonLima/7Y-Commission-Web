@@ -55,6 +55,12 @@ function default4Levels(): DockLevel[] {
 
 /* ============================================================
  * CONFIGURAÇÕES GLOBAIS DE GRADE
+ *
+ * Estas constantes (COL_W, COL_H, GAP...) são a "unidade" de
+ * tamanho das posições/docas comuns. O Galpão 2 reaproveita
+ * exatamente as mesmas constantes do Galpão 1 para que toda
+ * posição do tipo "posicao" tenha o mesmo tamanho visual nos
+ * dois galpões, como pedido.
  * ============================================================ */
 
 const GAP = 5;
@@ -76,6 +82,41 @@ interface BuiltBlock {
     rooms: WarehouseRoom[];
     width: number;
     height: number;
+}
+
+/* ============================================================
+ * HELPER: reescala um bloco inteiro (posições + salas) para que
+ * sua largura/altura final batam exatamente com um alvo (usado
+ * para forçar o Galpão 2 a ficar do mesmo tamanho do Galpão 1).
+ * O bloco é escalado em torno do seu próprio canto superior
+ * esquerdo (originX, originY) — normalmente o offsetX/offsetY
+ * usado para construí-lo — então sua posição na tela não muda,
+ * só o tamanho interno.
+ * ============================================================ */
+
+function scaleBuiltBlock(
+    block: BuiltBlock,
+    originX: number,
+    originY: number,
+    targetWidth: number,
+    targetHeight: number
+): BuiltBlock {
+    if (block.width <= 0 || block.height <= 0) return block;
+
+    const scaleX = targetWidth / block.width;
+    const scaleY = targetHeight / block.height;
+
+    const transform = (item: { x: number; y: number; width: number; height: number }) => {
+        item.x = originX + (item.x - originX) * scaleX;
+        item.y = originY + (item.y - originY) * scaleY;
+        item.width = item.width * scaleX;
+        item.height = item.height * scaleY;
+    };
+
+    block.defs.forEach(transform);
+    block.rooms.forEach(transform);
+
+    return { ...block, width: targetWidth, height: targetHeight };
 }
 
 /* ============================================================
@@ -508,7 +549,26 @@ function buildMeioBlock(offsetX: number, offsetY: number, codePrefix: string): B
 }
 
 /* ============================================================
- * FÁBRICA DO GALPÃO 2 (EXATAMENTE COMO NA IMAGEM EM ANEXO)
+ * FÁBRICA DO GALPÃO 2
+ *
+ * Reproduz a estrutura da referência visual (GALPAO_COMPLETO):
+ *  - Linha de 8 posições no topo + faixa larga "RUA 25"
+ *  - Zona superior com duas colunas paralelas de ruas:
+ *      esquerda 4 posições/linha (RUA 024 -> 019),
+ *      direita 3 posições/linha (RUA 024 -> 017)
+ *  - Esquerda muda para grade fina de 7 posições/linha
+ *    (RUA 016 -> 015 -> 014 -> 014, repetida)
+ *  - As duas colunas se sincronizam num único ponto (sem barra
+ *    preta — só uma faixa de rua normal) antes da zona inferior
+ *  - Zona inferior: esquerda em 7 colunas (RUA 008 -> RUA 001),
+ *    direita em 3 colunas (RUA 012 -> RUA 009). Como a direita
+ *    tem menos ruas que a esquerda nessa zona, as DOCAS continuam
+ *    com o MESMO tamanho (mesma COL_H/COL_W do Galpão 1) — só a
+ *    altura das FAIXAS DE RUA entre os grupos da direita é
+ *    calculada para que a última posição da direita termine
+ *    exatamente na mesma altura que a última da esquerda.
+ *  - No fim, o bloco inteiro é reescalado para o mesmo tamanho
+ *    (largura/altura) do Galpão 1.
  * ============================================================ */
 
 function buildGalpao2Block(
@@ -530,182 +590,221 @@ function buildGalpao2Block(
         seq += 1;
         const code = `${codePrefix}${String(seq).padStart(3, "0")}`;
         return {
-            code, type: "posicao", label: code, shortLabel: customShort || String(seq),
-            galpao: galpaoNum, rua, x, y, width: w, height: h, defaultCapacity: 1, levels: default1Level(),
+            code,
+            type: "posicao",
+            label: code,
+            shortLabel: customShort || String(seq),
+            galpao: galpaoNum,
+            rua,
+            x,
+            y,
+            width: w,
+            height: h,
+            defaultCapacity: 1,
+            levels: default1Level(),
         };
     }
 
-    const G2_GAP = 8;
-    const baseColW = 92;
+    const LEFT_COLS_UPPER = 4;
+    const LEFT_COLS_LOWER = 7;
+    const RIGHT_COLS = 3;
 
-    // Dimensões exatas espelhando a estrutura do layout do Galpão 2 fornecido na imagem
-    const LEFT_W = 4 * baseColW + 3 * G2_GAP;
-    const RIGHT_W = 3 * baseColW + 2 * G2_GAP;
-    const CORRIDOR_WIDTH = 65;
-    const TOTAL_W = LEFT_W + CORRIDOR_WIDTH + RIGHT_W + G2_GAP * 2;
-    const RIGHT_START_X = startX + LEFT_W + G2_GAP + CORRIDOR_WIDTH + G2_GAP;
+    // Reaproveita EXATAMENTE as constantes de grade do Galpão 1
+    // (COL_W, COL_H, GAP): assim toda posição comum tem o mesmo
+    // tamanho nos dois galpões.
+    const LEFT_W = LEFT_WIDTH; // 7 colunas de COL_W, igual ao Galpão 1
+    const RIGHT_W = RIGHT_COLS * COL_W + (RIGHT_COLS - 1) * GAP;
+    const CORRIDOR_WIDTH = CORRIDOR_W;
+    const TOTAL_W2 = LEFT_W + CORRIDOR_WIDTH + RIGHT_W + GAP * 2;
+    const RIGHT_START_X = startX + LEFT_W + GAP + CORRIDOR_WIDTH + GAP;
 
-    const TOP_H = 120;
-    const ROW2_H = 100;
-    const STREET_H = 35;
-    const MID_H = 75;
-    const THIN_H = 65;
-    const LARGE_H = 110;
+    const TOP_H = COL_H * 2;
+    const ROW_H = COL_H * 1.5; // zona superior (blocos maiores)
+    const THIN_ROW_H = COL_H; // zona inferior (mesma altura de posição do Galpão 1)
+    const STREET_H = BAND_H_SM;
+    const STREET_H_TOP = BAND_H;
 
-    const middleTopY = cursorY + TOP_H + G2_GAP + (STREET_H * 1.5) + G2_GAP + ROW2_H + G2_GAP;
+    function leftColW(cols: number) {
+        return (LEFT_W - (cols - 1) * GAP) / cols;
+    }
+    const rightColW = (RIGHT_W - (RIGHT_COLS - 1) * GAP) / RIGHT_COLS;
 
-    /* --- TOPO --- */
-    const topW1 = (TOTAL_W - 7 * G2_GAP) / 8;
-    const topLabels1 = ["08", "07", "06", "05", "04", "03", "02", "01"];
+    let lY = 0;
+    let rY = 0;
+
+    function drawLeftRows(cols: number, rows: number, rowH: number, rua: string) {
+        const w = leftColW(cols);
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                defs.push(cell(rua, startX + c * (w + GAP), lY, w, rowH, String(cols - c).padStart(2, "0")));
+            }
+            lY += rowH + GAP;
+        }
+    }
+
+    function drawRightRows(rows: number, rowH: number, rua: string) {
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < RIGHT_COLS; c++) {
+                defs.push(cell(rua, RIGHT_START_X + c * (rightColW + GAP), rY, rightColW, rowH, String(RIGHT_COLS - c).padStart(2, "0")));
+            }
+            rY += rowH + GAP;
+        }
+    }
+
+    function leftStreetBand(label: string, height = STREET_H) {
+        rooms.push({ id: `${codePrefix}-l-band-${lY}`, x: startX, y: lY, width: LEFT_W, height, label, isStreet: true });
+        lY += height + GAP;
+    }
+
+    function rightStreetBand(label: string, height = STREET_H) {
+        rooms.push({ id: `${codePrefix}-r-band-${rY}`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height, label, isStreet: true });
+        rY += height + GAP;
+    }
+
+    // Dado um conjunto de grupos (linhas fixas em rowH), calcula a
+    // altura de faixa de rua necessária ENTRE os grupos (sem faixa
+    // depois do último) para que a altura total bata exatamente com
+    // targetHeight — usado para esticar só as ruas do lado direito,
+    // nunca as docas.
+    function requiredBandHeight(
+        steps: { count: number }[],
+        rowH: number,
+        gap: number,
+        targetHeight: number
+    ): number {
+        const totalRows = steps.reduce((sum, s) => sum + s.count, 0);
+        const bandsCount = steps.length - 1;
+        const rowsHeight = totalRows * (rowH + gap);
+        if (bandsCount <= 0) return STREET_H;
+        const raw = (targetHeight - rowsHeight - bandsCount * gap) / bandsCount;
+        return Math.max(10, raw);
+    }
+
+    /* ---------- TOPO: linha única de 8 posições ---------- */
+    const topW = (TOTAL_W2 - 7 * GAP) / 8;
     for (let i = 0; i < 8; i++) {
-        defs.push(cell("RUA 025", startX + i * (topW1 + G2_GAP), cursorY, topW1, TOP_H, topLabels1[i]));
+        defs.push(cell("RUA 025", startX + i * (topW + GAP), cursorY, topW, TOP_H, String(8 - i).padStart(2, "0")));
     }
-    cursorY += TOP_H + G2_GAP;
+    cursorY += TOP_H + GAP;
 
-    rooms.push({ id: `${codePrefix}-rua-025`, x: startX, y: cursorY, width: TOTAL_W, height: STREET_H * 1.5, label: "RUA 025", isStreet: true });
-    cursorY += (STREET_H * 1.5) + G2_GAP;
+    /* ---------- FAIXA "RUA 25" ---------- */
+    rooms.push({ id: `${codePrefix}-rua-25`, x: startX, y: cursorY, width: TOTAL_W2, height: STREET_H_TOP, label: "RUA 25", isStreet: true });
+    cursorY += STREET_H_TOP + GAP;
 
-    const row2LeftLabels = ["07", "06", "05", "04"];
-    for (let i = 0; i < 4; i++) {
-        defs.push(cell("RUA 025", startX + i * (baseColW + G2_GAP), cursorY, baseColW, ROW2_H, row2LeftLabels[i]));
-    }
-    const row2RightLabels = ["03", "02", "01"];
-    for (let i = 0; i < 3; i++) {
-        defs.push(cell("RUA 025", RIGHT_START_X + i * (baseColW + G2_GAP), cursorY, baseColW, ROW2_H, row2RightLabels[i]));
-    }
+    lY = cursorY;
+    rY = cursorY;
 
-    let lY = middleTopY;
-    let rY = middleTopY;
+    /* ---------- ZONA SUPERIOR (4 colunas à esquerda / 3 à direita) ---------- */
 
-    /* --- MEIO ESQUERDA (Ruas 024 a 016) --- */
-    const leftMidData = [
-        { count: 1, streetName: "RUA 024" },
-        { count: 2, streetName: "RUA 023" },
-        { count: 2, streetName: "RUA 022" },
-        { count: 2, streetName: "RUA 021" },
-        { count: 2, streetName: "RUA 020" },
-        { count: 1, streetName: "RUA 019" },
+    // Primeira linha, sem rótulo próprio (fica logo abaixo da RUA 25).
+    drawLeftRows(LEFT_COLS_UPPER, 1, ROW_H, "RUA 025");
+    leftStreetBand("");
+
+    drawRightRows(1, ROW_H, "RUA 025");
+    rightStreetBand("");
+
+    const leftUpperData: { count: number; rua: string }[] = [
+        { count: 2, rua: "RUA 024" },
+        { count: 2, rua: "RUA 023" },
+        { count: 2, rua: "RUA 022" },
+        { count: 2, rua: "RUA 021" },
+        { count: 2, rua: "RUA 020" },
+        { count: 1, rua: "RUA 019" },
     ];
-    for (const step of leftMidData) {
-        for (let r = 0; r < step.count; r++) {
-            for (let c = 0; c < 4; c++) {
-                defs.push(cell(step.streetName, startX + c * (baseColW + G2_GAP), lY, baseColW, MID_H, "004"));
-            }
-            lY += MID_H + G2_GAP;
-        }
-        rooms.push({ id: `g2-lm-${step.streetName}`, x: startX, y: lY, width: LEFT_W, height: STREET_H, label: step.streetName, isStreet: true });
-        lY += STREET_H + G2_GAP;
+    for (const step of leftUpperData) {
+        drawLeftRows(LEFT_COLS_UPPER, step.count, ROW_H, step.rua);
+        leftStreetBand(step.rua);
     }
 
-    /* --- MEIO DIREITA (Ruas 024 a 017) --- */
-    const rightMidData = [
-        { count: 2, streetName: "RUA 024" },
-        { count: 2, streetName: "RUA 023" },
-        { count: 2, streetName: "RUA 022" },
-        { count: 2, streetName: "RUA 021" },
-        { count: 2, streetName: "RUA 020" },
-        { count: 2, streetName: "RUA 019" },
-        { count: 2, streetName: "RUA 018" },
-        { count: 1, streetName: "RUA 017" },
+    const rightUpperData: { count: number; rua: string }[] = [
+        { count: 2, rua: "RUA 024" },
+        { count: 2, rua: "RUA 023" },
+        { count: 2, rua: "RUA 022" },
+        { count: 2, rua: "RUA 021" },
+        { count: 2, rua: "RUA 020" },
+        { count: 2, rua: "RUA 019" },
+        { count: 2, rua: "RUA 018" },
+        { count: 1, rua: "RUA 017" },
     ];
-    for (const step of rightMidData) {
-        for (let r = 0; r < step.count; r++) {
-            for (let c = 0; c < 3; c++) {
-                defs.push(cell(step.streetName, RIGHT_START_X + c * (baseColW + G2_GAP), rY, baseColW, MID_H, "004"));
-            }
-            rY += MID_H + G2_GAP;
-        }
-        rooms.push({ id: `g2-rm-${step.streetName}`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height: STREET_H, label: step.streetName, isStreet: true });
-        rY += STREET_H + G2_GAP;
+    for (const step of rightUpperData) {
+        drawRightRows(step.count, ROW_H, step.rua);
+        rightStreetBand(step.rua);
     }
 
-    /* --- BLOCO CENTRAL ESQUERDO (Ruas 016 até 001 - Estilo grade com 7 colunas) --- */
-    const thinW = (LEFT_W - 6 * G2_GAP) / 7;
-
-    function drawThin(count: number, assignedRua: string | null) {
-        for (let r = 0; r < count; r++) {
-            for (let c = 0; c < 7; c++) {
-                const lbl = (r === 0 && count === 2) ? String(7 - c).padStart(2, '0') : String(c + 8).padStart(2, '0');
-                defs.push(cell(assignedRua || "RUA 001", startX + c * (thinW + G2_GAP), lY, thinW, THIN_H, lbl));
-            }
-            lY += THIN_H + G2_GAP;
-        }
-    }
-
-    const leftLowerData = [
-        { count: 2, streetName: "RUA 016" },
-        { count: 2, streetName: "RUA 015" },
-        { count: 2, streetName: "RUA 014" },
-        { count: 2, streetName: "RUA 013" },
-        { count: 1, gap: STREET_H },
-        { count: 2, streetName: "RUA 008" },
-        { count: 2, streetName: "RUA 007" },
-        { count: 2, streetName: "RUA 006" },
-        { count: 2, streetName: "RUA 005" },
-        { count: 2, streetName: "RUA 004" },
-        { count: 2, streetName: "RUA 003" },
-        { count: 2, streetName: "RUA 002" },
-        { count: 2, streetName: "RUA 001" },
+    /* ---------- ZONA INTERMEDIÁRIA ESQUERDA: grade fina de 7 colunas ---------- */
+    const leftThinData: { count: number; rua: string }[] = [
+        { count: 1, rua: "RUA 016" },
+        { count: 2, rua: "RUA 015" },
+        { count: 2, rua: "RUA 014" },
+        { count: 1, rua: "RUA 014" },
     ];
-
-    for (const step of leftLowerData) {
-        if (step.gap) {
-            lY += step.gap;
-        } else {
-            drawThin(step.count, step.streetName || null);
-            if (step.streetName) {
-                rooms.push({ id: `g2-ll-${step.streetName}`, x: startX, y: lY, width: LEFT_W, height: STREET_H, label: step.streetName, isStreet: true });
-                lY += STREET_H + G2_GAP;
-            }
-        }
+    for (const step of leftThinData) {
+        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua);
+        leftStreetBand(step.rua);
     }
 
-    /* --- BLOCO INFERIOR DIREITO (Blocos Duplos Largos) --- */
-    const largeW = (RIGHT_W - G2_GAP) / 2;
+    /* ---------- SINCRONIZAÇÃO ENTRE AS DUAS METADES (sem barra preta) ----------
+     * Ambas as colunas continuam a partir da mesma altura. Em vez de um
+     * bloco preto sólido, é só uma faixa de rua comum (cinza), do
+     * tamanho de uma rua normal.
+     */
+    const syncY = Math.max(lY, rY);
+    rooms.push({ id: `${codePrefix}-sync`, x: startX, y: syncY, width: TOTAL_W2, height: STREET_H, label: "", isStreet: true });
+    lY = syncY + STREET_H + GAP;
+    rY = syncY + STREET_H + GAP;
+    const bottomStartY = lY;
 
-    function drawLarge(count: number, assignedRua: string) {
-        for (let r = 0; r < count; r++) {
-            for (let c = 0; c < 2; c++) {
-                defs.push(cell(assignedRua, RIGHT_START_X + c * (largeW + G2_GAP), rY, largeW, LARGE_H, "004"));
-            }
-            rY += LARGE_H + G2_GAP;
-        }
-    }
+    /* ---------- ZONA INFERIOR ESQUERDA: RUA 008 -> RUA 001 (7 colunas) ---------- */
+    const leftBottomData: { count: number; rua: string }[] = [
+        { count: 2, rua: "RUA 008" },
+        { count: 2, rua: "RUA 007" },
+        { count: 2, rua: "RUA 006" },
+        { count: 2, rua: "RUA 005" },
+        { count: 2, rua: "RUA 004" },
+        { count: 2, rua: "RUA 003" },
+        { count: 2, rua: "RUA 002" },
+        { count: 2, rua: "RUA 001" },
+    ];
+    leftBottomData.forEach((step, idx) => {
+        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua);
+        if (idx < leftBottomData.length - 1) leftStreetBand(step.rua);
+    });
+    const leftBottomHeight = lY - bottomStartY;
 
-    drawLarge(1, "RUA 010");
-    rY += STREET_H + G2_GAP;
+    /* ---------- ZONA INFERIOR DIREITA: RUA 012 -> RUA 009 (3 colunas) ----------
+     * As docas usam a MESMA altura THIN_ROW_H da esquerda (não são
+     * aumentadas). Só a faixa de rua entre os grupos é recalculada
+     * (requiredBandHeight) para que a última posição bata exatamente
+     * na mesma altura que a última da esquerda.
+     */
+    const rightBottomData: { count: number; rua: string }[] = [
+        { count: 2, rua: "RUA 012" },
+        { count: 2, rua: "RUA 011" },
+        { count: 2, rua: "RUA 010" },
+        { count: 1, rua: "RUA 009" },
+    ];
+    const rightBandH = requiredBandHeight(rightBottomData, THIN_ROW_H, GAP, leftBottomHeight);
 
-    rooms.push({ id: `g2-rl-rua-010-1`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height: STREET_H, label: "RUA 010", isStreet: true });
-    rY += STREET_H + G2_GAP;
+    rightBottomData.forEach((step, idx) => {
+        drawRightRows(step.count, THIN_ROW_H, step.rua);
+        if (idx < rightBottomData.length - 1) rightStreetBand(step.rua, rightBandH);
+    });
 
-    drawLarge(2, "RUA 010");
-    rooms.push({ id: `g2-rl-rua-010-2`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height: STREET_H, label: "RUA 010", isStreet: true });
-    rY += STREET_H + G2_GAP;
-
-    drawLarge(2, "RUA 009");
-    rooms.push({ id: `g2-rl-rua-009`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height: STREET_H, label: "RUA 009", isStreet: true });
-    rY += STREET_H + G2_GAP;
-
-    drawLarge(2, "RUA 007");
-    rooms.push({ id: `g2-rl-rua-007`, x: RIGHT_START_X, y: rY, width: RIGHT_W, height: STREET_H, label: "RUA 007", isStreet: true });
-    rY += STREET_H + G2_GAP;
-
-    drawLarge(1, "RUA 007");
-
-    /* --- CORREDOR CENTRAL --- */
+    /* ---------- CORREDOR CENTRAL ---------- */
+    const corridorTopY = cursorY;
     const maxY = Math.max(lY, rY);
     rooms.push({
         id: `${codePrefix}-corredor-central`,
-        x: startX + LEFT_W + G2_GAP,
-        y: middleTopY,
+        x: startX + LEFT_W + GAP,
+        y: corridorTopY,
         width: CORRIDOR_WIDTH,
-        height: maxY - middleTopY,
+        height: maxY - corridorTopY,
         label: "RUA",
         vertical: true,
         isStreet: true,
     });
 
-    const blockWidth = TOTAL_W + MARGIN_X * 2;
+    const blockWidth = TOTAL_W2 + MARGIN_X * 2;
     const blockHeight = maxY - offsetY + 40;
 
     rooms.unshift({ id: `${codePrefix}-header`, x: offsetX + 10, y: offsetY + 10, width: blockWidth - 20, height: 45, fill: "#1e293b", label: headerLabel });
@@ -728,14 +827,22 @@ const meioBlock = buildMeioBlock(
     "GM-P"
 );
 
-const galpao2Block = buildGalpao2Block(
+const galpao2OffsetX = galpao1Block.width + GALPAO_GAP + meioBlock.width + GALPAO_GAP;
+
+let galpao2Block = buildGalpao2Block(
     2,
     "G2-P",
     "DOCA2",
-    galpao1Block.width + GALPAO_GAP + meioBlock.width + GALPAO_GAP,
+    galpao2OffsetX,
     0,
     "GALPÃO 02 - ARMAZÉM"
 );
+
+// Força o Galpão 2 a ter EXATAMENTE a mesma largura e altura do
+// Galpão 1, reescalando o bloco inteiro (posições + ruas) em torno
+// do seu próprio canto superior esquerdo — a posição dele no mapa
+// (offsetX/offsetY) não muda, só o tamanho interno.
+galpao2Block = scaleBuiltBlock(galpao2Block, galpao2OffsetX, 0, galpao1Block.width, galpao1Block.height);
 
 /* ============================================================
  * EXPORTAÇÕES OBRIGATÓRIAS
