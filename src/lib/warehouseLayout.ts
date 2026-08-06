@@ -456,6 +456,12 @@ function buildGalpao1Block(
 
 /* ============================================================
  * FÁBRICA DO GALPÃO MEIO
+ *
+ * IMPORTANTE: todas as posições deste bloco (a linha "01" do topo
+ * e a grade "08" a "14") são pallets/porta-pallet — por isso o
+ * `cell()` local já nasce como type: "doca", com 4 níveis e
+ * capacidade 4 (igual às docas do Galpão 1/2), em vez de
+ * "posicao" com 1 nível.
  * ============================================================ */
 
 function buildMeioBlock(offsetX: number, offsetY: number, codePrefix: string): BuiltBlock {
@@ -471,7 +477,7 @@ function buildMeioBlock(offsetX: number, offsetY: number, codePrefix: string): B
         const code = `${codePrefix}${String(seq).padStart(3, "0")}`;
         return {
             code,
-            type: "posicao",
+            type: "doca",
             label: code,
             shortLabel: customShort || String(seq),
             galpao: 0,
@@ -480,8 +486,8 @@ function buildMeioBlock(offsetX: number, offsetY: number, codePrefix: string): B
             y,
             width: w,
             height: h,
-            defaultCapacity: 1,
-            levels: default1Level(),
+            defaultCapacity: 4,
+            levels: default4Levels(),
         };
     }
 
@@ -569,6 +575,12 @@ function buildMeioBlock(offsetX: number, offsetY: number, codePrefix: string): B
  *    exatamente na mesma altura que a última da esquerda.
  *  - No fim, o bloco inteiro é reescalado para o mesmo tamanho
  *    (largura/altura) do Galpão 1.
+ *
+ * IMPORTANTE: toda a coluna esquerda da zona inferior (grade fina
+ * de 7 colunas — RUA 016 até RUA 001) é pallet/porta-pallet, não
+ * posição comum. Por isso `cell()`/`drawLeftRows()`/`drawRightRows()`
+ * aceitam um parâmetro de tipo, e as chamadas de `leftThinData` e
+ * `leftBottomData` passam "doca" explicitamente.
  * ============================================================ */
 
 function buildGalpao2Block(
@@ -586,12 +598,21 @@ function buildGalpao2Block(
     const startX = offsetX + MARGIN_X;
     let cursorY = offsetY + 70;
 
-    function cell(rua: string, x: number, y: number, w: number, h: number, customShort?: string): DockDefinition {
+    function cell(
+        rua: string,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        customShort?: string,
+        type: PositionType = "posicao"
+    ): DockDefinition {
         seq += 1;
         const code = `${codePrefix}${String(seq).padStart(3, "0")}`;
+        const isPallet = type === "doca";
         return {
             code,
-            type: "posicao",
+            type,
             label: code,
             shortLabel: customShort || String(seq),
             galpao: galpaoNum,
@@ -600,8 +621,8 @@ function buildGalpao2Block(
             y,
             width: w,
             height: h,
-            defaultCapacity: 1,
-            levels: default1Level(),
+            defaultCapacity: isPallet ? 4 : 1,
+            levels: isPallet ? default4Levels() : default1Level(),
         };
     }
 
@@ -632,20 +653,20 @@ function buildGalpao2Block(
     let lY = 0;
     let rY = 0;
 
-    function drawLeftRows(cols: number, rows: number, rowH: number, rua: string) {
+    function drawLeftRows(cols: number, rows: number, rowH: number, rua: string, type: PositionType = "posicao") {
         const w = leftColW(cols);
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                defs.push(cell(rua, startX + c * (w + GAP), lY, w, rowH, String(cols - c).padStart(2, "0")));
+                defs.push(cell(rua, startX + c * (w + GAP), lY, w, rowH, String(cols - c).padStart(2, "0"), type));
             }
             lY += rowH + GAP;
         }
     }
 
-    function drawRightRows(rows: number, rowH: number, rua: string) {
+    function drawRightRows(rows: number, rowH: number, rua: string, type: PositionType = "posicao") {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < RIGHT_COLS; c++) {
-                defs.push(cell(rua, RIGHT_START_X + c * (rightColW + GAP), rY, rightColW, rowH, String(RIGHT_COLS - c).padStart(2, "0")));
+                defs.push(cell(rua, RIGHT_START_X + c * (rightColW + GAP), rY, rightColW, rowH, String(RIGHT_COLS - c).padStart(2, "0"), type));
             }
             rY += rowH + GAP;
         }
@@ -731,15 +752,21 @@ function buildGalpao2Block(
         rightStreetBand(step.rua);
     }
 
-    /* ---------- ZONA INTERMEDIÁRIA ESQUERDA: grade fina de 7 colunas ---------- */
-    const leftThinData: { count: number; rua: string }[] = [
-        { count: 1, rua: "RUA 016" },
+    /* ---------- ZONA INTERMEDIÁRIA ESQUERDA: grade fina de 7 colunas ----------
+     * RUA 016 continua sendo posição comum, igual ao layout original.
+     * Só RUA 015 e RUA 014 (as duas linhas) viram pallet/porta-pallet,
+     * conforme pedido.
+     */
+    drawLeftRows(LEFT_COLS_LOWER, 1, THIN_ROW_H, "RUA 016");
+    leftStreetBand("RUA 016");
+
+    const leftThinPalletData: { count: number; rua: string }[] = [
         { count: 2, rua: "RUA 015" },
         { count: 2, rua: "RUA 014" },
         { count: 1, rua: "RUA 014" },
     ];
-    for (const step of leftThinData) {
-        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua);
+    for (const step of leftThinPalletData) {
+        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua, "doca");
         leftStreetBand(step.rua);
     }
 
@@ -754,7 +781,9 @@ function buildGalpao2Block(
     rY = syncY + STREET_H + GAP;
     const bottomStartY = lY;
 
-    /* ---------- ZONA INFERIOR ESQUERDA: RUA 008 -> RUA 001 (7 colunas) ---------- */
+    /* ---------- ZONA INFERIOR ESQUERDA: RUA 008 -> RUA 001 (7 colunas) ----------
+     * Toda esta faixa também é pallet/porta-pallet.
+     */
     const leftBottomData: { count: number; rua: string }[] = [
         { count: 2, rua: "RUA 008" },
         { count: 2, rua: "RUA 007" },
@@ -766,7 +795,7 @@ function buildGalpao2Block(
         { count: 2, rua: "RUA 001" },
     ];
     leftBottomData.forEach((step, idx) => {
-        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua);
+        drawLeftRows(LEFT_COLS_LOWER, step.count, THIN_ROW_H, step.rua, "doca");
         if (idx < leftBottomData.length - 1) leftStreetBand(step.rua);
     });
     const leftBottomHeight = lY - bottomStartY;
