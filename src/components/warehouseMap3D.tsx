@@ -169,6 +169,9 @@ function WoodenPallet({ w, d }: { w: number; d: number }) {
     );
 }
 
+// Produto (caixa) sobre o palete. Fica um pouco menor que os protetores/
+// guardas da posição, mas quase preenchendo a doca — antes era 0.78/0.82
+// (pequeno demais); agora fica em ~0.94-0.98 dependendo de onde é chamado.
 function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed: number; boxColorHint?: string }) {
     const { boxIndex, boxH } = useMemo(() => {
         const rand = mulberry32(seed);
@@ -181,8 +184,8 @@ function LoadedPallet({ w, d, seed, boxColorHint }: { w: number; d: number; seed
     const customMat = useMemo(() => boxColorHint ? new THREE.MeshLambertMaterial({ color: boxColorHint }) : null, [boxColorHint]);
     const boxMat = customMat || MATS.boxes[boxIndex];
 
-    const boxW = w * 0.78;
-    const boxD = d * 0.78;
+    const boxW = w * 0.94;
+    const boxD = d * 0.94;
     const palletHeight = 0.09;
 
     return (
@@ -315,7 +318,7 @@ function RackFrame({
                 if (!occupiedLevels.has(levelNumber)) return null;
                 return (
                     <group key={i} position={[0, y + 0.02, 0]}>
-                        <LoadedPallet w={w * 0.82} d={d * 0.82} seed={seedBase + i * 97} boxColorHint={boxColorHint} />
+                        <LoadedPallet w={w * 0.95} d={d * 0.95} seed={seedBase + i * 97} boxColorHint={boxColorHint} />
                     </group>
                 );
             })}
@@ -394,9 +397,9 @@ function PositionPallet({
 
             <group>
                 {(occupied || dock.blocked) ? (
-                    <LoadedPallet w={w * 0.92} d={d * 0.92} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
+                    <LoadedPallet w={w * 0.98} d={d * 0.98} seed={hashCode(dock.code)} boxColorHint={(dock as any).productColor} />
                 ) : (
-                    <WoodenPallet w={w * 0.92} d={d * 0.92} />
+                    <WoodenPallet w={w * 0.98} d={d * 0.98} />
                 )}
 
                 <PositionGuards w={w} d={d} height={1.6} />

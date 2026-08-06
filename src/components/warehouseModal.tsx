@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock, Unlock } from "lucide-react";
+import { Lock, Unlock, Repeat } from "lucide-react";
 import Modal from "@/components/modal";
 import {
     DockOccupancy,
     upsertDockCapacity,
     upsertDockBlocked,
+    upsertDockType,
     DOCK_STATUS_COLORS,
     DOCK_STATUS_LABELS,
 } from "@/services/wareHouseServices";
@@ -21,6 +22,7 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
     const [capacityInput, setCapacityInput] = useState("");
     const [savingCapacity, setSavingCapacity] = useState(false);
     const [togglingBlock, setTogglingBlock] = useState(false);
+    const [togglingType, setTogglingType] = useState(false);
 
     useEffect(() => {
         if (dock) setCapacityInput(String(dock.capacityMax));
@@ -49,6 +51,16 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
             onChanged();
         } finally {
             setTogglingBlock(false);
+        }
+    };
+
+    const handleToggleType = async () => {
+        setTogglingType(true);
+        try {
+            await upsertDockType(dock.code, isDoca ? "posicao" : "doca");
+            onChanged();
+        } finally {
+            setTogglingType(false);
         }
     };
 
@@ -99,6 +111,20 @@ export default function WarehouseModal({ dock, onClose, onChanged }: WarehouseMo
                         </div>
                     )}
                 </div>
+
+                <button
+                    type="button"
+                    onClick={handleToggleType}
+                    disabled={togglingType}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-60"
+                >
+                    <Repeat className="h-4 w-4" strokeWidth={1.75} />
+                    {togglingType
+                        ? "Convertendo..."
+                        : isDoca
+                            ? "Converter em Posição comum"
+                            : "Converter em Porta-Pallet"}
+                </button>
 
                 <button
                     type="button"
