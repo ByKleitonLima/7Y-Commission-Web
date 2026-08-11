@@ -13,6 +13,7 @@ import {
     Upload,
     Warehouse,
     LogOut,
+    History,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
@@ -24,6 +25,7 @@ export const NAV_ITEMS = [
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
     { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
     { label: "Estoque", href: "/stock", icon: Boxes, pageTitle: "Estoque" },
+    { label: "Preços & Histórico", href: "/prices-history", icon: History, pageTitle: "Preços & Histórico de Estoque" },
     { label: "Mapa do Galpão", href: "/warehouse", icon: Warehouse, pageTitle: "Mapa do Galpão" },
     { label: "Importar", href: "/import", icon: Upload, pageTitle: "Importar planilha de comissão" },
 ];
