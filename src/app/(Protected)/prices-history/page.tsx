@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
     Upload,
     FileSpreadsheet,
@@ -17,6 +17,7 @@ import {
     Eye,
     TrendingUp,
     TrendingDown,
+    ClipboardList,
 } from "lucide-react";
 import StatCard from "@/components/statCard";
 import RefreshButton from "@/components/refreshButton";
@@ -56,6 +57,10 @@ function formatFileSize(bytes: number | null) {
 function formatDateTime(iso: string) {
     return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
+
+// Tamanho de página usado na tabela de produtos exibida logo abaixo do
+// card de upload, depois que um estoque é enviado.
+const LAST_IMPORT_ITEMS_PAGE_SIZE = 20;
 
 export default function PricesHistoryPage() {
     const { user, name } = useAuth();
@@ -99,6 +104,14 @@ export default function PricesHistoryPage() {
     const [detailUpdateEntries, setDetailUpdateEntries] = useState<PriceHistoryEntry[]>([]);
     const [isLoadingUpdateDetail, setIsLoadingUpdateDetail] = useState(false);
 
+    // Produtos do ÚLTIMO estoque importado, exibidos direto na tela
+    // (sem precisar abrir o modal de detalhes) logo após o envio.
+    const [lastImportItems, setLastImportItems] = useState<StockSnapshotItem[]>([]);
+    const [lastImportItemsTotal, setLastImportItemsTotal] = useState(0);
+    const [lastImportItemsPage, setLastImportItemsPage] = useState(0);
+    const [isLoadingLastImportItems, setIsLoadingLastImportItems] = useState(false);
+    const [lastImportProductSearch, setLastImportProductSearch] = useState("");
+
     const showToast = (message: string, variant: "success" | "error" = "success") => {
         setToastVariant(variant);
         setToastMessage(message);
@@ -116,10 +129,31 @@ export default function PricesHistoryPage() {
         setImports(stockData);
         setPriceUpdates(priceData);
         setIsLoadingHistory(false);
+        return stockData;
     };
 
+    // Busca (com paginação) os produtos de um determinado snapshot de
+    // estoque e joga no estado usado pela tabela visível na tela.
+    const loadLastImportItems = useCallback(async (importId: string, page = 0) => {
+        setIsLoadingLastImportItems(true);
+        try {
+            const { items, total } = await fetchStockImportItems(importId, page, LAST_IMPORT_ITEMS_PAGE_SIZE);
+            setLastImportItems(items);
+            setLastImportItemsTotal(total);
+            setLastImportItemsPage(page);
+        } finally {
+            setIsLoadingLastImportItems(false);
+        }
+    }, []);
+
     useEffect(() => {
-        loadHistory();
+        (async () => {
+            const stockData = await loadHistory();
+            if (stockData && stockData.length > 0) {
+                await loadLastImportItems(stockData[0].id, 0);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const lastImport = imports[0] || null;
@@ -170,7 +204,7 @@ export default function PricesHistoryPage() {
         setStockProgress({ sent: 0, total: stockParsed.records.length });
 
         try {
-            await saveStockSnapshot({
+            const savedImport = await saveStockSnapshot({
                 fileName: stockFile.name,
                 fileSize: stockFile.size,
                 referenceDate: stockParsed.referenceDate,
@@ -186,6 +220,11 @@ export default function PricesHistoryPage() {
             );
             cancelStockImport();
             await loadHistory();
+
+            // Assim que o envio é confirmado, já carrega os produtos desse
+            // estoque na tabela visível da tela (sem precisar abrir modal).
+            setLastImportProductSearch("");
+            await loadLastImportItems(savedImport.id, 0);
         } catch (err: any) {
             console.error(err);
             showToast(err.message || "Não foi possível salvar o estoque importado.", "error");
@@ -243,6 +282,12 @@ export default function PricesHistoryPage() {
             );
             cancelPriceUpdate();
             await loadHistory();
+
+            // Se o estoque atual tiver produtos cujo preço mudou, atualiza a
+            // tabela visível para refletir os novos valores.
+            if (lastImport) {
+                await loadLastImportItems(lastImport.id, lastImportItemsPage);
+            }
         } catch (err: any) {
             console.error(err);
             showToast(err.message || "Não foi possível salvar a atualização de preços.", "error");
@@ -265,7 +310,19 @@ export default function PricesHistoryPage() {
         try {
             await deleteStockImport(target.id);
             showToast(`A importação "${target.fileName}" foi removida com sucesso.`, "success");
-            await loadHistory();
+            const stockData = await loadHistory();
+
+            // Se o estoque excluído era o que estava sendo exibido na
+            // tabela visível, troca para o próximo mais recente (ou limpa).
+            if (target.id === lastImport?.id) {
+                if (stockData.length > 0) {
+                    await loadLastImportItems(stockData[0].id, 0);
+                } else {
+                    setLastImportItems([]);
+                    setLastImportItemsTotal(0);
+                    setLastImportItemsPage(0);
+                }
+            }
         } catch (err: any) {
             console.error(err);
             showToast("Não foi possível excluir essa importação.", "error");
@@ -303,6 +360,22 @@ export default function PricesHistoryPage() {
     };
 
     const detailTotalPages = Math.max(1, Math.ceil(detailTotal / DETAIL_PAGE_SIZE));
+    const lastImportItemsTotalPages = Math.max(
+        1,
+        Math.ceil(lastImportItemsTotal / LAST_IMPORT_ITEMS_PAGE_SIZE)
+    );
+
+    // Filtro local (por nome, código ou fornecedor) só na página atual
+    // carregada — evita nova ida ao banco a cada tecla digitada.
+    const filteredLastImportItems = useMemo(() => {
+        const term = lastImportProductSearch.trim().toLowerCase();
+        if (!term) return lastImportItems;
+        return lastImportItems.filter((item) =>
+            `${item.productName} ${item.productCode} ${item.supplierName} ${item.supplierCode}`
+                .toLowerCase()
+                .includes(term)
+        );
+    }, [lastImportItems, lastImportProductSearch]);
 
     return (
         <div className="pb-12 relative">
@@ -377,7 +450,14 @@ export default function PricesHistoryPage() {
                         Cada envio gera um snapshot imutável, usado depois no cálculo de comissões.
                     </p>
                 </div>
-                <RefreshButton onRefresh={loadHistory} />
+                <RefreshButton
+                    onRefresh={async () => {
+                        const stockData = await loadHistory();
+                        if (stockData.length > 0) {
+                            await loadLastImportItems(stockData[0].id, lastImportItemsPage);
+                        }
+                    }}
+                />
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -672,6 +752,137 @@ export default function PricesHistoryPage() {
                 </div>
             </div>
 
+            {/* PRODUTOS DO ÚLTIMO ESTOQUE IMPORTADO — visível direto na tela,
+                sem precisar abrir o modal de detalhes. Atualiza sozinho
+                assim que um novo envio é confirmado. */}
+            <div className="mt-10">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-2 mb-4">
+                    <div className="flex items-center gap-2">
+                        <ClipboardList className="h-5 w-5 text-gray-500" strokeWidth={1.75} />
+                        <h2 className="text-base font-semibold text-[#2d2d2d]">
+                            Produtos do estoque atual
+                            {lastImport ? (
+                                <span className="ml-2 font-normal text-gray-400">— {lastImport.fileName}</span>
+                            ) : null}
+                        </h2>
+                    </div>
+
+                    {lastImport && (
+                        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <input
+                                value={lastImportProductSearch}
+                                onChange={(e) => setLastImportProductSearch(e.target.value)}
+                                placeholder="Buscar por nome, código ou fornecedor..."
+                                className="w-64 bg-transparent text-sm text-[#2d2d2d] outline-none placeholder:text-gray-400"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {!lastImport && !isLoadingHistory && (
+                    <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
+                        Nenhum estoque importado ainda. Envie uma planilha acima para visualizar os produtos aqui.
+                    </div>
+                )}
+
+                {lastImport && (
+                    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-100 bg-gray-50 text-gray-500 font-medium">
+                                        <th className="px-6 py-3">Código</th>
+                                        <th className="px-6 py-3">Produto</th>
+                                        <th className="px-6 py-3">Fornecedor</th>
+                                        <th className="px-6 py-3">Categoria / Família</th>
+                                        <th className="px-6 py-3">Qtd.</th>
+                                        <th className="px-6 py-3">Vlr. Unitário</th>
+                                        <th className="px-6 py-3">Vlr. Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoadingLastImportItems ? (
+                                        <tr>
+                                            <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-400">
+                                                <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+                                                Carregando produtos...
+                                            </td>
+                                        </tr>
+                                    ) : filteredLastImportItems.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-400">
+                                                Nenhum produto encontrado{lastImportProductSearch ? " para essa busca" : ""}.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredLastImportItems.map((item) => (
+                                            <tr
+                                                key={item.id}
+                                                className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
+                                            >
+                                                <td className="px-6 py-3 font-mono text-xs text-gray-500">
+                                                    {item.productCode || "-"}
+                                                </td>
+                                                <td className="px-6 py-3 font-medium text-[#2d2d2d]">
+                                                    {item.productName || "-"}
+                                                </td>
+                                                <td className="px-6 py-3 text-gray-500">
+                                                    {item.supplierName || item.supplierCode || "-"}
+                                                </td>
+                                                <td className="px-6 py-3 text-gray-500">
+                                                    {[item.category, item.family].filter(Boolean).join(" / ") || "-"}
+                                                </td>
+                                                <td className="px-6 py-3 text-gray-700 font-medium">
+                                                    {numberFmt(item.quantity)}
+                                                </td>
+                                                <td className="px-6 py-3 text-gray-500">
+                                                    {currencyFmt(item.unitValue)}
+                                                </td>
+                                                <td className="px-6 py-3 font-semibold text-[#2d2d2d]">
+                                                    {currencyFmt(item.totalValue)}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {!lastImportProductSearch && (
+                            <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+                                <span>
+                                    Página {lastImportItemsPage + 1} de {lastImportItemsTotalPages} (
+                                    {numberFmt(lastImportItemsTotal)} produtos no total)
+                                </span>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => loadLastImportItems(lastImport.id, Math.max(0, lastImportItemsPage - 1))}
+                                        disabled={lastImportItemsPage === 0 || isLoadingLastImportItems}
+                                        className="rounded-md border border-gray-200 px-3 py-1.5 font-medium text-gray-600 disabled:opacity-40"
+                                    >
+                                        Anterior
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            loadLastImportItems(
+                                                lastImport.id,
+                                                Math.min(lastImportItemsTotalPages - 1, lastImportItemsPage + 1)
+                                            )
+                                        }
+                                        disabled={
+                                            lastImportItemsPage >= lastImportItemsTotalPages - 1 || isLoadingLastImportItems
+                                        }
+                                        className="rounded-md border border-gray-200 px-3 py-1.5 font-medium text-gray-600 disabled:opacity-40"
+                                    >
+                                        Próxima
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
             <div className="mt-12">
                 <div className="flex items-center gap-2 border-b border-gray-200 pb-2 mb-4">
                     <History className="h-5 w-5 text-gray-500" strokeWidth={1.75} />
@@ -729,8 +940,16 @@ export default function PricesHistoryPage() {
                                     <td className="px-6 py-4">
                                         <div className="flex gap-2">
                                             <button
+                                                onClick={() => loadLastImportItems(imp.id, 0)}
+                                                title="Exibir produtos deste estoque na tabela acima"
+                                                className={`flex h-8 w-8 items-center justify-center rounded-lg border text-gray-500 transition-colors hover:bg-gray-50 ${imp.id === lastImport?.id ? "border-gray-800 text-gray-800" : "border-gray-200"
+                                                    }`}
+                                            >
+                                                <ClipboardList className="h-4 w-4" strokeWidth={1.75} />
+                                            </button>
+                                            <button
                                                 onClick={() => openDetail(imp)}
-                                                title="Visualizar produtos deste estoque"
+                                                title="Visualizar produtos deste estoque em modal"
                                                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
                                             >
                                                 <Eye className="h-4 w-4" strokeWidth={1.75} />
