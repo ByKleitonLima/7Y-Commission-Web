@@ -175,7 +175,6 @@ function toDbItemRow(r: StockPriceRecord, importId: string) {
     quantity: r.totalStock ?? 0,
     unit_value: r.priceT1 ?? 0,
     total_value: (r.totalStock ?? 0) * (r.priceT1 ?? 0),
-    family_legacy: undefined,
     raw_data: r.raw,
   };
 }
@@ -265,17 +264,28 @@ async function applyT1PricesFromRecords(
   const withCode = records.filter((r) => r.productCode);
   if (withCode.length === 0) return 0;
 
-  const codes = withCode.map((r) => r.productCode);
-  const { data: currentProducts, error: fetchError } = await supabase
-    .from(PRODUCTS_TABLE)
-    .select("product_code, name, price")
-    .in("product_code", codes);
+  // Dedup + batch: .in() vira query string GET no PostgREST, então uma
+  // lista com milhares de códigos (planilha grande) estoura o limite de
+  // tamanho da URL e a Supabase responde "Bad Request" (400). Buscamos
+  // em blocos pequenos e juntamos os resultados no mesmo Map de antes.
+  const uniqueCodes = Array.from(new Set(withCode.map((r) => r.productCode)));
+  const FETCH_CHUNK = 150;
+  const currentMap = new Map<string, any>();
 
-  if (fetchError) {
-    console.error("Erro ao buscar preços atuais para comparação:", fetchError);
+  for (let i = 0; i < uniqueCodes.length; i += FETCH_CHUNK) {
+    const chunk = uniqueCodes.slice(i, i + FETCH_CHUNK);
+    const { data: chunkProducts, error: fetchError } = await supabase
+      .from(PRODUCTS_TABLE)
+      .select("product_code, name, price")
+      .in("product_code", chunk);
+
+    if (fetchError) {
+      console.error("Erro ao buscar preços atuais para comparação:", fetchError);
+      continue;
+    }
+
+    (chunkProducts ?? []).forEach((p: any) => currentMap.set(p.product_code, p));
   }
-
-  const currentMap = new Map((currentProducts ?? []).map((p: any) => [p.product_code, p]));
 
   const changed = withCode
     .map((r) => {
