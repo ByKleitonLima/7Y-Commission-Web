@@ -14,6 +14,7 @@ import {
     Warehouse,
     LogOut,
     History,
+    ClipboardList,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
@@ -22,6 +23,7 @@ export const NAV_ITEMS = [
     { label: "Dashboard", href: "/home", icon: LayoutDashboard, pageTitle: "Dashbord de comissão" },
     { label: "Gerentes", href: "/managers", icon: UserCog, pageTitle: "Gerentes de vendas" },
     { label: "Vendedores", href: "/sellers", icon: Users, pageTitle: "Vendedores" },
+    { label: "Descontos", href: "/discounts", icon: ClipboardList, pageTitle: "Descontos de Comissão" },
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
     { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
     { label: "Estoque", href: "/stock", icon: Boxes, pageTitle: "Estoque" },
