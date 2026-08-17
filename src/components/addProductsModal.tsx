@@ -362,8 +362,8 @@ export default function AddProductModal({
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-12 gap-2 items-center rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                            <div className="col-span-3 flex flex-col gap-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                            <div className="col-span-1 sm:col-span-3 flex flex-col gap-1">
                                 <label className="text-[11px] font-medium text-gray-500">Tamanho</label>
                                 <input
                                     type="text"

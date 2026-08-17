@@ -60,7 +60,7 @@ export default function Managers() {
 
     return (
         <div>
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 <RefreshButton onRefresh={refresh} />
                 <button
                     onClick={handleOpenCreate}
@@ -71,7 +71,7 @@ export default function Managers() {
                 </button>
             </div>
 
-            <div className="mt-6 flex gap-6">
+            <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Total de gerentes" value={total} />
                 <StatCard label="Vendedores vinculados" value={linkedSellers} />
                 <StatCard label="Ativos" value={active} />

@@ -208,7 +208,7 @@ export default function ImportPage() {
 
             {/* POPUP / TOAST DE NOTIFICAÇÃO (Exibido após excluir) */}
             {toastMessage && (
-                <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-gray-900 px-5 py-4 text-white shadow-2xl border border-gray-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-gray-900 px-5 py-4 text-white shadow-2xl border border-gray-800 animate-in fade-in slide-in-from-bottom-4 duration-300 max-w-[calc(100vw-3rem)]">
                     <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
                     <p className="text-sm font-medium">{toastMessage}</p>
                     <button
@@ -239,7 +239,7 @@ export default function ImportPage() {
                             Atenção: Isso irá remover permanentemente todas as vendas vinculadas a este arquivo em todos os dashboards.
                         </p>
 
-                        <div className="mt-6 flex items-center justify-end gap-3">
+                        <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
                             <button
                                 type="button"
                                 onClick={() => setItemToDelete(null)}
@@ -259,7 +259,7 @@ export default function ImportPage() {
                 </div>
             )}
 
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 sm:p-10 text-center shadow-sm">
                 <Upload className="mx-auto h-8 w-8 text-gray-400" strokeWidth={1.5} />
                 <p className="mt-3 text-sm font-medium text-[#2d2d2d]">
                     Envie a planilha de comissão (.xlsx ou .xls)
@@ -294,11 +294,11 @@ export default function ImportPage() {
 
             {metrics && fileName && (
                 <div className="mt-8 animate-fade-in">
-                    <div className="flex items-center justify-between border-b border-gray-200 pb-4 mb-6">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg">
-                                <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
-                                Pré-visualização: {fileName}
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-4 mb-6">
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg w-fit">
+                                <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={2} />
+                                <span className="truncate">Pré-visualização: {fileName}</span>
                             </div>
                             <span className="text-xs text-gray-500 px-1">Quem enviará: {userDisplayName}</span>
                         </div>
@@ -313,53 +313,53 @@ export default function ImportPage() {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Faturamento</span>
-                                <Database className="h-5 w-5 text-emerald-500" />
+                                <Database className="h-5 w-5 shrink-0 text-emerald-500" />
                             </div>
-                            <p className="mt-2 text-xl font-bold text-[#2d2d2d]">
+                            <p className="mt-2 text-lg sm:text-xl font-bold text-[#2d2d2d] break-words">
                                 {metrics.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </p>
                         </div>
 
-                        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Linhas</span>
-                                <Database className="h-5 w-5 text-blue-500" />
+                                <Database className="h-5 w-5 shrink-0 text-blue-500" />
                             </div>
-                            <p className="mt-2 text-xl font-bold text-[#2d2d2d]">
+                            <p className="mt-2 text-lg sm:text-xl font-bold text-[#2d2d2d]">
                                 {records.length.toLocaleString("pt-BR")}
                             </p>
                         </div>
 
-                        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Gerentes</span>
-                                <Database className="h-5 w-5 text-purple-500" />
+                                <Database className="h-5 w-5 shrink-0 text-purple-500" />
                             </div>
-                            <p className="mt-2 text-xl font-bold text-[#2d2d2d]">
+                            <p className="mt-2 text-lg sm:text-xl font-bold text-[#2d2d2d]">
                                 {metrics.uniqueManagers}
                             </p>
                         </div>
 
-                        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Vendedores</span>
-                                <Database className="h-5 w-5 text-orange-500" />
+                                <Database className="h-5 w-5 shrink-0 text-orange-500" />
                             </div>
-                            <p className="mt-2 text-xl font-bold text-[#2d2d2d]">
+                            <p className="mt-2 text-lg sm:text-xl font-bold text-[#2d2d2d]">
                                 {metrics.uniqueSellers}
                             </p>
                         </div>
 
-                        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Clientes</span>
-                                <Database className="h-5 w-5 text-indigo-500" />
+                                <Database className="h-5 w-5 shrink-0 text-indigo-500" />
                             </div>
-                            <p className="mt-2 text-xl font-bold text-[#2d2d2d]">
+                            <p className="mt-2 text-lg sm:text-xl font-bold text-[#2d2d2d]">
                                 {metrics.uniqueClients}
                             </p>
                         </div>
@@ -367,7 +367,7 @@ export default function ImportPage() {
 
                     {isSuccess && !isSaving && (
                         <div className="mt-6 flex items-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 p-4 rounded-xl">
-                            <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                            <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={2} />
                             Dados integrados ao Supabase e distribuídos para os Dashboards com sucesso!
                         </div>
                     )}
@@ -392,7 +392,63 @@ export default function ImportPage() {
                     </div>
                 )}
 
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                {/* ---- MOBILE: cards ---- */}
+                <div className="space-y-3 md:hidden">
+                    {history.map((item, index) => (
+                        <div key={item.id || index} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <FileSpreadsheet className="h-4 w-4 shrink-0 text-gray-400" />
+                                    <span className="truncate text-sm font-medium text-[#2d2d2d]">{item.fileName}</span>
+                                </div>
+                                <button
+                                    onClick={() => openDeleteModal(item)}
+                                    disabled={deletingId === item.id}
+                                    title="Excluir esta importação e as vendas vinculadas"
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                >
+                                    {deletingId === item.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                                    ) : (
+                                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                    )}
+                                </button>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <p className="text-gray-400">Data</p>
+                                    <p className="font-medium text-gray-700">
+                                        {new Date(item.created_at).toLocaleDateString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400">Registros</p>
+                                    <p className="font-medium text-gray-700">{item.rowCount?.toLocaleString("pt-BR")}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400">Faturamento</p>
+                                    <p className="font-semibold text-gray-900">
+                                        {item.totalValue?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400">Enviado por</p>
+                                    <p className="truncate font-medium text-gray-700">{item.uploadedBy}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {history.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
+                            Nenhum envio registrado até o momento.
+                        </div>
+                    )}
+                </div>
+
+                {/* ---- DESKTOP: tabela ---- */}
+                <div className="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
                     <table className="w-full text-left text-sm">
                         <thead>
                             <tr className="border-b border-gray-100 bg-gray-50 text-gray-500 font-medium">

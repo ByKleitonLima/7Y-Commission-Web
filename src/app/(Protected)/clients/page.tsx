@@ -60,7 +60,7 @@ export default function ClientesPage() {
 
     return (
         <div>
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 <RefreshButton onRefresh={refresh} />
                 <button
                     onClick={handleOpenCreate}
@@ -71,7 +71,7 @@ export default function ClientesPage() {
                 </button>
             </div>
 
-            <div className="mt-6 flex gap-6">
+            <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Total de clientes" value={total} />
                 <StatCard label="Ativos" value={active} />
                 <StatCard label="Inativos" value={inactive} />
