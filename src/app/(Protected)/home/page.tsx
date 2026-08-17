@@ -24,25 +24,8 @@ import {
 const ALL_FAMILIES = "Todas";
 const ALL_REGIONS = "Todas";
 
-// Função para obter o primeiro e o último dia do mês atual (formato YYYY-MM-DD)
-function getCurrentMonthRange() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    
-    // Primeiro dia do mês
-    const from = `${year}-${month}-01`;
-    
-    // Último dia do mês
-    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-    const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
-
-    return { from, to };
-}
-
 export default function Home() {
-    // Inicializa dateRange com o mês atual por padrão
-    const [dateRange, setDateRange] = useState<{ from: string; to: string }>(getCurrentMonthRange);
+    const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
     const [selectedFamily, setSelectedFamily] = useState<string>(ALL_FAMILIES);
     const [selectedRegion, setSelectedRegion] = useState<string>(ALL_REGIONS);
     const [chartFamily, setChartFamily] = useState<string>(ALL_FAMILIES);
@@ -52,12 +35,16 @@ export default function Home() {
         setDateRange({ from, to });
     }, []);
 
+    const handleClearDateFilter = useCallback(() => {
+        setDateRange({ from: "", to: "" });
+    }, []);
+
     const saleOrderRecords = useMemo(() => filterSaleOrders(records || []), [records]);
 
     const hasDateFilter = Boolean(dateRange.from && dateRange.to);
 
     const recordsInRange = useMemo(
-        () => (hasDateFilter ? filterByDateRange(saleOrderRecords, dateRange.from, dateRange.to) : []),
+        () => (hasDateFilter ? filterByDateRange(saleOrderRecords, dateRange.from, dateRange.to) : saleOrderRecords),
         [saleOrderRecords, dateRange, hasDateFilter]
     );
 
@@ -65,7 +52,6 @@ export default function Home() {
     const regionOptions = useMemo(() => getSortedRegions(recordsInRange), [recordsInRange]);
 
     const filteredRecords = useMemo(() => {
-        if (!hasDateFilter) return [];
         if (selectedFamily === ALL_FAMILIES && selectedRegion === ALL_REGIONS) return recordsInRange;
         return recordsInRange.filter((record) => {
             const matchesFamily =
@@ -74,7 +60,7 @@ export default function Home() {
                 selectedRegion === ALL_REGIONS || extractRegion(record).toLowerCase() === selectedRegion.toLowerCase();
             return matchesFamily && matchesRegion;
         });
-    }, [recordsInRange, selectedFamily, selectedRegion, hasDateFilter]);
+    }, [recordsInRange, selectedFamily, selectedRegion]);
 
     const aggregates = useMemo(
         () => buildDashboardAggregates(filteredRecords, dateRange.from || undefined, dateRange.to || undefined),
@@ -100,7 +86,7 @@ export default function Home() {
     const hasData = filteredRecords.length > 0;
 
     return (
-        <div className="relative mx-auto w-full max-w-[1600px] space-y-8 pb-12">
+        <div className="relative mx-auto w-full max-w-[1600px] space-y-8 pb-12 px-1 sm:px-2 lg:px-0">
             {isLoading && (
                 <div
                     className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -114,13 +100,13 @@ export default function Home() {
                 </div>
             )}
 
-            <div className="flex flex-wrap items-end gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <div>
+            <div className="flex flex-wrap items-end gap-3 sm:gap-4 rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm">
+                <div className="min-w-[160px] flex-1 sm:flex-none">
                     <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Grupos</label>
                     <select
                         value={selectedFamily}
                         onChange={(e) => setSelectedFamily(e.target.value)}
-                        className="h-10 max-w-[220px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
+                        className="h-10 w-full sm:max-w-[220px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                     >
                         <option value={ALL_FAMILIES}>Todas mercadorias</option>
                         {familyOptions.map((f) => (
@@ -129,12 +115,12 @@ export default function Home() {
                     </select>
                 </div>
 
-                <div>
+                <div className="min-w-[160px] flex-1 sm:flex-none">
                     <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Regiões</label>
                     <select
                         value={selectedRegion}
                         onChange={(e) => setSelectedRegion(e.target.value)}
-                        className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
+                        className="h-10 w-full sm:w-auto rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                     >
                         <option value={ALL_REGIONS}>Todas as regiões</option>
                         {regionOptions.map((r) => (
@@ -143,12 +129,23 @@ export default function Home() {
                     </select>
                 </div>
 
-                <DateRangeFilter from={dateRange.from} to={dateRange.to} onChange={handleDateChange} />
+                <div className="flex flex-wrap items-end gap-2">
+                    <DateRangeFilter from={dateRange.from} to={dateRange.to} onChange={handleDateChange} />
+                    {hasDateFilter && (
+                        <button
+                            type="button"
+                            onClick={handleClearDateFilter}
+                            className="h-10 shrink-0 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+                        >
+                            Ver todas as datas
+                        </button>
+                    )}
+                </div>
 
-                <div className="ml-auto">
+                <div className="ml-0 sm:ml-auto">
                     <label
                         aria-hidden
-                        className="mb-1 block select-none text-xs font-semibold uppercase text-transparent"
+                        className="mb-1 hidden select-none text-xs font-semibold uppercase text-transparent sm:block"
                     >
                         Atualizar
                     </label>
@@ -156,22 +153,16 @@ export default function Home() {
                 </div>
             </div>
 
-            {!hasDateFilter && !isLoading && (
+            {!hasData && !isLoading && (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
-                    Selecione um período (De/Até) para visualizar os indicadores do Dashboard.
+                    Nenhum registro de venda encontrado{hasDateFilter || selectedFamily !== ALL_FAMILIES || selectedRegion !== ALL_REGIONS ? " para os filtros selecionados" : ""}. Vá em{" "}
+                    <span className="font-medium text-[#2d2d2d]">Importar</span> no menu pra carregar dados{hasDateFilter ? " ou troque os filtros" : ""}.
                 </div>
             )}
 
-            {hasDateFilter && !hasData && !isLoading && (
-                <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
-                    Nenhum registro de venda encontrado para o período ou filtros selecionados. Vá em{" "}
-                    <span className="font-medium text-[#2d2d2d]">Importar</span> no menu pra carregar dados ou troque os filtros.
-                </div>
-            )}
-
-            {hasDateFilter && hasData && (
-                <div className="space-y-16">
-                    <div className="flex flex-wrap gap-6">
+            {hasData && (
+                <div className="space-y-12 lg:space-y-16">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
                         <StatCard
                             label="Receita Líquida"
                             value={aggregates.totalNetRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
@@ -186,7 +177,7 @@ export default function Home() {
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-6 items-stretch md:grid-cols-2 xl:grid-cols-3">
                         <TopRankingCard title="Gerentes com Maior Faturamento Líquido" items={aggregates.topManagers} />
                         <TopRankingCard title="Vendedores com Maior Volume (Pacotes)" items={aggregates.topSellers} />
                         <TopRankingCard title="Regiões com Maior Faturamento Líquido" items={aggregates.topRegions} />
@@ -201,7 +192,7 @@ export default function Home() {
                                 <select
                                     value={chartFamily}
                                     onChange={(e) => setChartFamily(e.target.value)}
-                                    className="h-10 max-w-[240px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
+                                    className="h-10 w-full max-w-[240px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                                 >
                                     <option value={ALL_FAMILIES}>Todas mercadorias</option>
                                     {familyOptions.map((f) => (
@@ -213,7 +204,7 @@ export default function Home() {
                         <DailySalesChart title="Evolução do Faturamento Líquido" data={dailyTotalsForChart} />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-6 items-stretch md:grid-cols-2 xl:grid-cols-3">
                         <GroupSalesPieChart title="Faturamento Líquido por Grupos (R$)" data={aggregates.groupSalesData} />
                         <TopRankingCard title={`Top 5 Produtos - ${aggregates.group1Name || "Grupo 1"}`} items={aggregates.group1Products} />
                         <TopRankingCard title={`Top 5 Produtos - ${aggregates.group2Name || "Grupo 2"}`} items={aggregates.group2Products} />

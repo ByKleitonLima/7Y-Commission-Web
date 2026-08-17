@@ -5,18 +5,17 @@ function normalizeDescription(desc?: string | null): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
+    .replace(/[.\-_/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-// Pedidos de devolução de venda (NF normal ou NF-B) — são os valores que
-// devem ser descontados da comissão do vendedor. Como "DEV. VEND NF-B" já
-// contém "DEV. VEND NF" como substring, o segundo check é redundante na
-// prática, mas mantemos os dois literais explícitos por clareza e como
-// proteção contra pequenas variações de grafia na coluna DESCR. da planilha.
+const DEVOLUTION_PATTERN = /\bDEV\w*\s+VEND\w*\s+NF\b/;
+
 export function isDevolutionOrder(record: SalesRecord): boolean {
   const desc = normalizeDescription(record.description);
-  return desc.includes("DEV. VEND NF-B") || desc.includes("DEV. VEND NF");
+  if (!desc) return false;
+  return DEVOLUTION_PATTERN.test(desc);
 }
 
 export interface DevolutionOrderDetail {
@@ -39,17 +38,12 @@ export interface AutomaticSellerDiscount {
   orders: DevolutionOrderDetail[];
 }
 
-// Agrupa por vendedor todos os pedidos de devolução (DEV. VEND NF /
-// NF-B) encontrados nos registros de vendas já importados. O valor
-// somado é o VLRTOT (totalValue) de cada linha de devolução — o "valor
-// do pedido" que deve ser descontado da comissão.
+type DiscountAccumulator = AutomaticSellerDiscount & { orderKeys: Set<string> };
+
 export function buildAutomaticDiscountsFromRecords(
   records: SalesRecord[]
 ): AutomaticSellerDiscount[] {
-  const map = new Map<
-    string,
-    AutomaticSellerDiscount & { orderKeys: Set<string> }
-  >();
+  const map = new Map<string, DiscountAccumulator>();
 
   for (const r of records || []) {
     if (!r || !isDevolutionOrder(r)) continue;
@@ -76,7 +70,6 @@ export function buildAutomaticDiscountsFromRecords(
 
     entry.sellerName = sellerName || entry.sellerName;
 
-    // Evita contar a mesma linha duas vezes (dedupe por pedido+produto).
     if (entry.orderKeys.has(orderKey)) continue;
     entry.orderKeys.add(orderKey);
 
