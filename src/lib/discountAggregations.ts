@@ -38,7 +38,12 @@ export interface AutomaticSellerDiscount {
   orders: DevolutionOrderDetail[];
 }
 
-type DiscountAccumulator = AutomaticSellerDiscount & { orderKeys: Set<string> };
+type DiscountAccumulator = AutomaticSellerDiscount & {
+
+  seenOrderKeys: Set<string>;
+
+  seenLineKeys: Set<string>;
+};
 
 export function buildAutomaticDiscountsFromRecords(
   records: SalesRecord[]
@@ -53,6 +58,8 @@ export function buildAutomaticDiscountsFromRecords(
     const orderKey =
       r.uniqueNumber?.trim() || `${r.productCode}-${r.issueDate}-${r.totalValue}`;
 
+    const lineKey = `${orderKey}::${r.productCode || ""}::${r.totalValue}`;
+
     let entry = map.get(sellerCode);
     if (!entry) {
       entry = {
@@ -63,21 +70,26 @@ export function buildAutomaticDiscountsFromRecords(
         ordersCount: 0,
         totalValue: 0,
         orders: [],
-        orderKeys: new Set<string>(),
+        seenOrderKeys: new Set<string>(),
+        seenLineKeys: new Set<string>(),
       };
       map.set(sellerCode, entry);
     }
 
     entry.sellerName = sellerName || entry.sellerName;
 
-    if (entry.orderKeys.has(orderKey)) continue;
-    entry.orderKeys.add(orderKey);
+    if (entry.seenLineKeys.has(lineKey)) continue;
+    entry.seenLineKeys.add(lineKey);
+
+    if (!entry.seenOrderKeys.has(orderKey)) {
+      entry.seenOrderKeys.add(orderKey);
+      entry.ordersCount += 1;
+    }
 
     const value = Number(r.totalValue) || 0;
     entry.totalValue += value;
-    entry.ordersCount += 1;
     entry.orders.push({
-      id: orderKey,
+      id: lineKey,
       uniqueNumber: r.uniqueNumber || "",
       productCode: r.productCode || "",
       productName: r.productName || "",
@@ -88,6 +100,6 @@ export function buildAutomaticDiscountsFromRecords(
   }
 
   return Array.from(map.values())
-    .map(({ orderKeys, ...rest }) => rest)
+    .map(({ seenOrderKeys, seenLineKeys, ...rest }) => rest)
     .sort((a, b) => b.totalValue - a.totalValue);
 }

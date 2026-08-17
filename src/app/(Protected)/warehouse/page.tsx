@@ -81,13 +81,13 @@ export default function WarehousePage() {
     }
 
     return (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr] h-[calc(100vh-6rem)] overflow-hidden pb-4">
-            <div className="h-full overflow-y-auto">
+        <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-[280px_1fr] lg:h-[calc(100vh-6rem)] overflow-visible lg:overflow-hidden pb-4">
+            <div className="max-h-[50vh] overflow-y-auto lg:h-full lg:max-h-none">
                 <WarehouseSidebar docks={docks} onSelectDock={handleSelectDock} />
             </div>
 
-            <div className="flex flex-col h-full space-y-3 overflow-hidden">
-                <div className="flex items-center justify-between shrink-0">
+            <div className="flex flex-col gap-3 overflow-hidden lg:h-full">
+                <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
                     <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
                         <button
                             type="button"

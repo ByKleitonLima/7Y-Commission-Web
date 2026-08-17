@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
     LayoutDashboard,
     UserCog,
@@ -15,6 +15,8 @@ import {
     LogOut,
     History,
     ClipboardList,
+    Menu as MenuIcon,
+    X,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
@@ -35,77 +37,184 @@ export const NAV_ITEMS = [
 function Sidebar() {
     const pathname = usePathname();
     const { user, name, role, logout } = useAuth();
+    const [mobileOpen, setMobileOpen] = useState(false);
 
     const displayName = name || user?.email?.split("@")[0] || "Usuário";
     const initial = displayName.charAt(0).toUpperCase();
+    const currentItem = NAV_ITEMS.find((item) => item.href === pathname);
+
+    const closeMobile = () => setMobileOpen(false);
 
     return (
-        <aside className="group fixed left-3 sm:left-6 top-[20px] sm:top-[50px] bottom-[20px] sm:bottom-[50px] z-50 w-[64px] sm:w-[72px]">
-            <div
-                className="absolute inset-y-0 left-0 flex flex-col rounded-2xl bg-[#2d2d2d] shadow-2xl transition-[width] duration-200 ease-out will-change-[width] overflow-hidden w-[64px] sm:w-[72px] lg:group-hover:w-64"
-                style={{ contain: "paint layout" }}
-            >
-                <div className="flex h-16 sm:h-20 shrink-0 items-center overflow-hidden my-4 sm:my-6 px-3 sm:px-4">
-                    <div className="relative transition-all duration-200 ease-out shrink-0 h-8 w-8 sm:h-9 sm:w-9 lg:group-hover:h-14 lg:group-hover:w-[130px]">
-                        <Image
-                            src="/img/logo.png"
-                            alt="7Y Distribuidora"
-                            fill
-                            priority
-                            sizes="130px"
-                            className="object-contain object-left"
-                        />
-                    </div>
-                </div>
+        <>
+            {/* ============================================================
+                BARRA SUPERIOR MOBILE (abaixo de lg)
+                Fixa no topo, com botão de hambúrguer para abrir o menu.
+                O layout protegido (Protected/layout.tsx) reserva espaço
+                (pt) pra essa barra não cobrir o conteúdo.
+               ============================================================ */}
+            <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 shadow-sm lg:hidden">
+                <button
+                    type="button"
+                    onClick={() => setMobileOpen(true)}
+                    aria-label="Abrir menu"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#2d2d2d] transition-colors active:bg-gray-100"
+                >
+                    <MenuIcon className="h-6 w-6" strokeWidth={1.75} />
+                </button>
 
-                <nav className="sidebar-scroll flex-1 space-y-1 px-2 sm:px-3 overflow-y-auto overflow-x-hidden">
-                    {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
-                        const active = pathname === href;
-                        return (
-                            <Link
-                                key={href}
-                                href={href}
-                                className={`flex h-10 sm:h-11 items-center gap-3 rounded-lg px-2.5 sm:px-3 transition-colors ${active
-                                    ? "bg-white text-[#2d2d2d]"
-                                    : "text-gray-300 hover:bg-white/10"
-                                    }`}
+                <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-[#2d2d2d]">
+                    {currentItem?.label || "7Y Hub"}
+                </span>
+
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2d2d2d] text-xs font-semibold text-white">
+                    {initial}
+                </div>
+            </header>
+
+            {/* ============================================================
+                DRAWER MOBILE (abaixo de lg)
+               ============================================================ */}
+            {mobileOpen && (
+                <div className="fixed inset-0 z-50 lg:hidden">
+                    <div
+                        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150"
+                        onClick={closeMobile}
+                    />
+                    <div className="absolute inset-y-0 left-0 flex w-[80%] max-w-[300px] flex-col bg-[#2d2d2d] shadow-2xl animate-in slide-in-from-left duration-200">
+                        <div className="flex h-16 shrink-0 items-center justify-between px-4">
+                            <div className="relative h-9 w-[110px]">
+                                <Image
+                                    src="/img/logo.png"
+                                    alt="7Y Distribuidora"
+                                    fill
+                                    priority
+                                    sizes="110px"
+                                    className="object-contain object-left"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeMobile}
+                                aria-label="Fechar menu"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10"
                             >
-                                <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                                <span className="whitespace-nowrap text-sm font-medium opacity-0 invisible pointer-events-none transition-opacity duration-150 lg:group-hover:opacity-100 lg:group-hover:visible lg:group-hover:pointer-events-auto">
-                                    {label}
-                                </span>
-                            </Link>
-                        );
-                    })}
-                </nav>
-
-                <div className="border-t border-white/10 px-2 sm:px-3 pb-4 sm:pb-6 pt-4 overflow-hidden shrink-0">
-                    <div className="flex items-center gap-3 overflow-hidden px-1 mb-2.5">
-                        <div className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
-                            {initial}
+                                <X className="h-5 w-5" strokeWidth={1.75} />
+                            </button>
                         </div>
-                        <div className="whitespace-nowrap opacity-0 invisible pointer-events-none transition-opacity duration-150 lg:group-hover:opacity-100 lg:group-hover:visible lg:group-hover:pointer-events-auto">
-                            <p className="text-sm font-medium leading-tight text-white">
-                                {displayName}
-                            </p>
-                            <span className="mt-2.5 flex justify-center items-center rounded-full bg-[#F9F9F9] h-[16px] w-[100px] text-[11px] text-[#2d2d2d]">
-                                {role ?? "..."}
-                            </span>
+
+                        <nav className="sidebar-scroll flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-1">
+                            {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+                                const active = pathname === href;
+                                return (
+                                    <Link
+                                        key={href}
+                                        href={href}
+                                        onClick={closeMobile}
+                                        className={`flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors ${active ? "bg-white text-[#2d2d2d]" : "text-gray-300 hover:bg-white/10"
+                                            }`}
+                                    >
+                                        <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                                        {label}
+                                    </Link>
+                                );
+                            })}
+                        </nav>
+
+                        <div className="shrink-0 border-t border-white/10 px-3 pb-6 pt-4">
+                            <div className="mb-2.5 flex items-center gap-3 px-1">
+                                <div className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
+                                    {initial}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium leading-tight text-white">{displayName}</p>
+                                    <span className="mt-1 inline-flex h-[16px] items-center justify-center rounded-full bg-[#F9F9F9] px-2 text-[11px] text-[#2d2d2d]">
+                                        {role ?? "..."}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    closeMobile();
+                                    logout();
+                                }}
+                                className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-300 transition-colors hover:bg-white/10"
+                            >
+                                <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                                Sair
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================================
+                SIDEBAR DESKTOP (lg e acima) — comportamento original,
+                expande no hover.
+               ============================================================ */}
+            <aside className="group fixed left-6 top-[50px] bottom-[50px] z-50 hidden w-[72px] lg:block">
+                <div
+                    className="absolute inset-y-0 left-0 flex w-[72px] flex-col overflow-hidden rounded-2xl bg-[#2d2d2d] shadow-2xl transition-[width] duration-200 ease-out will-change-[width] group-hover:w-64"
+                    style={{ contain: "paint layout" }}
+                >
+                    <div className="my-6 flex h-20 shrink-0 items-center overflow-hidden px-4">
+                        <div className="relative h-9 w-9 shrink-0 transition-all duration-200 ease-out group-hover:h-14 group-hover:w-[130px]">
+                            <Image
+                                src="/img/logo.png"
+                                alt="7Y Distribuidora"
+                                fill
+                                priority
+                                sizes="130px"
+                                className="object-contain object-left"
+                            />
                         </div>
                     </div>
 
-                    <button
-                        onClick={logout}
-                        className="flex h-10 w-full items-center gap-3 rounded-lg px-2.5 sm:px-3 text-gray-300 transition-colors hover:bg-white/10"
-                    >
-                        <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                        <span className="whitespace-nowrap text-sm font-medium opacity-0 invisible pointer-events-none transition-opacity duration-150 lg:group-hover:opacity-100 lg:group-hover:visible lg:group-hover:pointer-events-auto">
-                            Sair
-                        </span>
-                    </button>
+                    <nav className="sidebar-scroll flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3">
+                        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+                            const active = pathname === href;
+                            return (
+                                <Link
+                                    key={href}
+                                    href={href}
+                                    className={`flex h-11 items-center gap-3 rounded-lg px-3 transition-colors ${active ? "bg-white text-[#2d2d2d]" : "text-gray-300 hover:bg-white/10"
+                                        }`}
+                                >
+                                    <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                                    <span className="pointer-events-none invisible whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-150 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                                        {label}
+                                    </span>
+                                </Link>
+                            );
+                        })}
+                    </nav>
+
+                    <div className="shrink-0 overflow-hidden border-t border-white/10 px-3 pb-6 pt-4">
+                        <div className="mb-2.5 flex items-center gap-3 overflow-hidden px-1">
+                            <div className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
+                                {initial}
+                            </div>
+                            <div className="pointer-events-none invisible whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                                <p className="text-sm font-medium leading-tight text-white">{displayName}</p>
+                                <span className="mt-2.5 flex h-[16px] w-[100px] items-center justify-center rounded-full bg-[#F9F9F9] text-[11px] text-[#2d2d2d]">
+                                    {role ?? "..."}
+                                </span>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={logout}
+                            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-gray-300 transition-colors hover:bg-white/10"
+                        >
+                            <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                            <span className="pointer-events-none invisible whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-150 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                                Sair
+                            </span>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        </aside>
+            </aside>
+        </>
     );
 }
 
