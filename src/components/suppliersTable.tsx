@@ -97,7 +97,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
 
     return (
         <div className="mt-8 rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center gap-3 border-b border-gray-100 p-4">
+            <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
                     <Search className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} />
                     <input
@@ -111,7 +111,7 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
                 <button
                     type="button"
                     onClick={openFilterModal}
-                    className="relative flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
+                    className="relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
                 >
                     <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} />
                     Filtros
@@ -123,105 +123,182 @@ export default function SuppliersTable({ suppliers, onEdit, onDelete }: Supplier
                 </button>
             </div>
 
-            <table className="w-full text-left text-sm text-gray-600">
-                <thead className="border-b border-gray-100 text-gray-500">
-                    <tr>
-                        <th className="px-6 py-3 font-medium">Fornecedor</th>
-                        <th className="px-6 py-3 font-medium">Código / CNPJ</th>
-                        <th className="px-6 py-3 font-medium">Categorias</th>
-                        <th className="px-6 py-3 font-medium">Status</th>
-                        <th className="px-6 py-3 text-center font-medium">Produtos Vinculados</th>
-                        <th className="px-6 py-3 text-right font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {filtered.map((supplier) => (
-                        <tr key={supplier.id} className="transition-colors hover:bg-gray-50/80">
-                            <td className="px-6 py-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
-                                        {supplier.avatar_url ? (
-                                            <img
-                                                src={supplier.avatar_url}
-                                                alt={supplier.name}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="flex h-full w-full items-center justify-center bg-gray-200 text-sm font-semibold text-gray-600">
-                                                {supplier.name ? supplier.name.charAt(0).toUpperCase() : <Building2 className="h-4 w-4 text-gray-400" />}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <span className="font-medium text-gray-900">{supplier.name}</span>
+            {/* ---- MOBILE: cards ---- */}
+            <div className="divide-y divide-gray-100 md:hidden">
+                {filtered.map((supplier) => (
+                    <div key={supplier.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
+                                    {supplier.avatar_url ? (
+                                        <img src={supplier.avatar_url} alt={supplier.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center bg-gray-200 text-sm font-semibold text-gray-600">
+                                            {supplier.name ? supplier.name.charAt(0).toUpperCase() : <Building2 className="h-4 w-4 text-gray-400" />}
+                                        </div>
+                                    )}
                                 </div>
-                            </td>
-
-                            <td className="px-6 py-4 font-mono text-xs text-gray-500">
-                                {supplier.supplier_code || "-"}
-                            </td>
-
-                            <td className="px-6 py-4">
-                                {supplier.categories && supplier.categories.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                        {supplier.categories.map((c) => (
-                                            <span
-                                                key={c}
-                                                className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600"
-                                            >
-                                                {c}
-                                            </span>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    "-"
-                                )}
-                            </td>
-
-                            <td className="px-6 py-4">
-                                <StatusBadge
-                                    label={supplier.status}
-                                    variant={supplier.status === "Ativo" ? "success" : "danger"}
-                                />
-                            </td>
-
-                            <td className="px-6 py-4 text-center font-medium text-gray-700">
-                                {supplier.productsCount ?? 0}
-                            </td>
-
-                            <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        onClick={() => onEdit(supplier)}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
-                                        title="Editar"
-                                    >
-                                        <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (confirm(`Deseja remover o fornecedor "${supplier.name}"?`)) {
-                                                onDelete(supplier);
-                                            }
-                                        }}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                        title="Excluir"
-                                    >
-                                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-gray-900">{supplier.name}</p>
+                                    <p className="truncate font-mono text-xs text-gray-500">{supplier.supplier_code || "-"}</p>
                                 </div>
-                            </td>
-                        </tr>
-                    ))}
+                            </div>
+                            <StatusBadge
+                                label={supplier.status}
+                                variant={supplier.status === "Ativo" ? "success" : "danger"}
+                            />
+                        </div>
 
-                    {filtered.length === 0 && (
+                        {supplier.categories && supplier.categories.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1">
+                                {supplier.categories.map((c) => (
+                                    <span
+                                        key={c}
+                                        className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600"
+                                    >
+                                        {c}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-3 text-xs">
+                            <p className="text-gray-400">Produtos vinculados</p>
+                            <p className="font-medium text-gray-700">{supplier.productsCount ?? 0}</p>
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                            <button
+                                onClick={() => onEdit(supplier)}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                            >
+                                <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                Editar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (confirm(`Deseja remover o fornecedor "${supplier.name}"?`)) {
+                                        onDelete(supplier);
+                                    }
+                                }}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                            >
+                                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                Excluir
+                            </button>
+                        </div>
+                    </div>
+                ))}
+
+                {filtered.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400">
+                        Nenhum fornecedor encontrado para os filtros selecionados.
+                    </div>
+                )}
+            </div>
+
+            {/* ---- DESKTOP: tabela ---- */}
+            <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm text-gray-600">
+                    <thead className="border-b border-gray-100 text-gray-500">
                         <tr>
-                            <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-400">
-                                Nenhum fornecedor encontrado para os filtros selecionados.
-                            </td>
+                            <th className="px-6 py-3 font-medium">Fornecedor</th>
+                            <th className="px-6 py-3 font-medium">Código / CNPJ</th>
+                            <th className="px-6 py-3 font-medium">Categorias</th>
+                            <th className="px-6 py-3 font-medium">Status</th>
+                            <th className="px-6 py-3 text-center font-medium">Produtos Vinculados</th>
+                            <th className="px-6 py-3 text-right font-medium">Ações</th>
                         </tr>
-                    )}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {filtered.map((supplier) => (
+                            <tr key={supplier.id} className="transition-colors hover:bg-gray-50/80">
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
+                                            {supplier.avatar_url ? (
+                                                <img
+                                                    src={supplier.avatar_url}
+                                                    alt={supplier.name}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center bg-gray-200 text-sm font-semibold text-gray-600">
+                                                    {supplier.name ? supplier.name.charAt(0).toUpperCase() : <Building2 className="h-4 w-4 text-gray-400" />}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <span className="font-medium text-gray-900">{supplier.name}</span>
+                                    </div>
+                                </td>
+
+                                <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                                    {supplier.supplier_code || "-"}
+                                </td>
+
+                                <td className="px-6 py-4">
+                                    {supplier.categories && supplier.categories.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1">
+                                            {supplier.categories.map((c) => (
+                                                <span
+                                                    key={c}
+                                                    className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600"
+                                                >
+                                                    {c}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        "-"
+                                    )}
+                                </td>
+
+                                <td className="px-6 py-4">
+                                    <StatusBadge
+                                        label={supplier.status}
+                                        variant={supplier.status === "Ativo" ? "success" : "danger"}
+                                    />
+                                </td>
+
+                                <td className="px-6 py-4 text-center font-medium text-gray-700">
+                                    {supplier.productsCount ?? 0}
+                                </td>
+
+                                <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            onClick={() => onEdit(supplier)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                            title="Editar"
+                                        >
+                                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (confirm(`Deseja remover o fornecedor "${supplier.name}"?`)) {
+                                                    onDelete(supplier);
+                                                }
+                                            }}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-400">
+                                    Nenhum fornecedor encontrado para os filtros selecionados.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
             <Modal open={isFilterModalOpen} onClose={() => setFilterModalOpen(false)} title="Filtrar fornecedores">
                 <div className="space-y-4">

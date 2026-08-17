@@ -53,6 +53,9 @@ interface ProductsTableProps {
     onDelete: (product: Product) => void;
 }
 
+const currencyFmt = (v: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+
 export default function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps) {
     const [search, setSearch] = useState("");
     const [isFilterModalOpen, setFilterModalOpen] = useState(false);
@@ -115,7 +118,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
 
     return (
         <div className="mt-8 rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center gap-3 border-b border-gray-100 p-4">
+            <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
                     <Search className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} />
                     <input
@@ -129,7 +132,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                 <button
                     type="button"
                     onClick={openFilterModal}
-                    className="relative flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
+                    className="relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
                 >
                     <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} />
                     Filtros
@@ -141,58 +144,59 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                 </button>
             </div>
 
-            <table className="w-full text-left text-sm text-gray-600">
-                <thead className="border-b border-gray-100 text-gray-500">
-                    <tr>
-                        <th className="px-6 py-3 font-medium">Produto</th>
-                        <th className="px-6 py-3 font-medium">Código</th>
-                        <th className="px-6 py-3 font-medium">Fornecedor</th>
-                        <th className="px-6 py-3 font-medium">Docas / Tamanhos</th>
-                        <th className="px-6 py-3 font-medium">Preço</th>
-                        <th className="px-6 py-3 font-medium">Status</th>
-                        <th className="px-6 py-3 text-right font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {filtered.map((product) => {
-                        const sizesWithDocks = product.sizes?.filter((s) => s.dock) || [];
+            {/* ---- MOBILE: cards ---- */}
+            <div className="divide-y divide-gray-100 md:hidden">
+                {filtered.map((product) => {
+                    const sizesWithDocks = product.sizes?.filter((s) => s.dock) || [];
 
-                        return (
-                            <tr key={product.id} className="transition-colors hover:bg-gray-50/80">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-                                            {product.image_url ? (
-                                                <img
-                                                    src={product.image_url}
-                                                    alt={product.name}
-                                                    className="h-full w-full object-cover"
-                                                />
-                                            ) : (
-                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
-                                                    <Package className="h-5 w-5" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <span className="font-medium text-gray-900">{product.name}</span>
+                    return (
+                        <div key={product.id} className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                                        {product.image_url ? (
+                                            <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                                                <Package className="h-5 w-5" />
+                                            </div>
+                                        )}
                                     </div>
-                                </td>
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-gray-900">{product.name}</p>
+                                        <p className="truncate font-mono text-xs text-gray-500">{product.product_code || "-"}</p>
+                                    </div>
+                                </div>
+                                <span
+                                    className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                        product.status === "Ativo"
+                                            ? "bg-green-50 text-green-700 border border-green-200"
+                                            : "bg-red-50 text-red-700 border border-red-200"
+                                    }`}
+                                >
+                                    {product.status}
+                                </span>
+                            </div>
 
-                                <td className="px-6 py-4 font-mono text-xs text-gray-500">
-                                    {product.product_code || "-"}
-                                </td>
-
-                                <td className="px-6 py-4 text-gray-700">
-                                    {product.supplier_name || product.supplier_code || "N/A"}
-                                </td>
-
-                                <td className="px-6 py-4 text-gray-700">
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <p className="text-gray-400">Fornecedor</p>
+                                    <p className="truncate font-medium text-gray-700">
+                                        {product.supplier_name || product.supplier_code || "N/A"}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400">Preço</p>
+                                    <p className="font-medium text-gray-900">{currencyFmt(product.price)}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <p className="text-gray-400">Docas / Tamanhos</p>
                                     {sizesWithDocks.length > 0 ? (
-                                        <div className="flex flex-wrap gap-1">
+                                        <div className="mt-1 flex flex-wrap gap-1">
                                             {sizesWithDocks.map((s) => (
                                                 <span
                                                     key={s.id}
-                                                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700"
                                                 >
                                                     <span
                                                         className="h-2 w-2 rounded-full border border-black/10"
@@ -204,7 +208,7 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                                             ))}
                                         </div>
                                     ) : product.dock ? (
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                        <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-700">
                                             <span
                                                 className="h-2.5 w-2.5 rounded-full border border-black/10"
                                                 style={{ backgroundColor: product.color || "#9ca3af" }}
@@ -213,59 +217,163 @@ export default function ProductsTable({ products, onEdit, onDelete }: ProductsTa
                                             {product.level ? ` (Nv.${product.level})` : ""}
                                         </span>
                                     ) : (
-                                        <span className="text-xs text-gray-400">Sem local</span>
+                                        <p className="font-medium text-gray-400">Sem local</p>
                                     )}
-                                </td>
+                                </div>
+                            </div>
 
-                                <td className="px-6 py-4 font-medium text-gray-900">
-                                    {new Intl.NumberFormat("pt-BR", {
-                                        style: "currency",
-                                        currency: "BRL",
-                                    }).format(product.price || 0)}
-                                </td>
+                            <div className="mt-3 flex gap-2">
+                                <button
+                                    onClick={() => onEdit(product)}
+                                    className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                                >
+                                    <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                    Editar
+                                </button>
+                                <button
+                                    onClick={() => onDelete(product)}
+                                    className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                                >
+                                    <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                    Excluir
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
 
-                                <td className="px-6 py-4">
-                                    <span
-                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${product.status === "Ativo"
-                                            ? "bg-green-50 text-green-700 border border-green-200"
-                                            : "bg-red-50 text-red-700 border border-red-200"
-                                            }`}
-                                    >
-                                        {product.status}
-                                    </span>
-                                </td>
+                {filtered.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400">
+                        Nenhum produto encontrado para os filtros selecionados.
+                    </div>
+                )}
+            </div>
 
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                        <button
-                                            onClick={() => onEdit(product)}
-                                            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                                            title="Editar"
+            {/* ---- DESKTOP: tabela ---- */}
+            <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm text-gray-600">
+                    <thead className="border-b border-gray-100 text-gray-500">
+                        <tr>
+                            <th className="px-6 py-3 font-medium">Produto</th>
+                            <th className="px-6 py-3 font-medium">Código</th>
+                            <th className="px-6 py-3 font-medium">Fornecedor</th>
+                            <th className="px-6 py-3 font-medium">Docas / Tamanhos</th>
+                            <th className="px-6 py-3 font-medium">Preço</th>
+                            <th className="px-6 py-3 font-medium">Status</th>
+                            <th className="px-6 py-3 text-right font-medium">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {filtered.map((product) => {
+                            const sizesWithDocks = product.sizes?.filter((s) => s.dock) || [];
+
+                            return (
+                                <tr key={product.id} className="transition-colors hover:bg-gray-50/80">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                                                {product.image_url ? (
+                                                    <img
+                                                        src={product.image_url}
+                                                        alt={product.name}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+                                                        <Package className="h-5 w-5" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="font-medium text-gray-900">{product.name}</span>
+                                        </div>
+                                    </td>
+
+                                    <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                                        {product.product_code || "-"}
+                                    </td>
+
+                                    <td className="px-6 py-4 text-gray-700">
+                                        {product.supplier_name || product.supplier_code || "N/A"}
+                                    </td>
+
+                                    <td className="px-6 py-4 text-gray-700">
+                                        {sizesWithDocks.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {sizesWithDocks.map((s) => (
+                                                    <span
+                                                        key={s.id}
+                                                        className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                    >
+                                                        <span
+                                                            className="h-2 w-2 rounded-full border border-black/10"
+                                                            style={{ backgroundColor: product.color || "#9ca3af" }}
+                                                        />
+                                                        {s.name ? `${s.name}: ` : ""}{s.dock}
+                                                        {s.level ? ` (Nv.${s.level})` : ""}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : product.dock ? (
+                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                                <span
+                                                    className="h-2.5 w-2.5 rounded-full border border-black/10"
+                                                    style={{ backgroundColor: product.color || "#9ca3af" }}
+                                                />
+                                                {product.dock}
+                                                {product.level ? ` (Nv.${product.level})` : ""}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">Sem local</span>
+                                        )}
+                                    </td>
+
+                                    <td className="px-6 py-4 font-medium text-gray-900">
+                                        {currencyFmt(product.price)}
+                                    </td>
+
+                                    <td className="px-6 py-4">
+                                        <span
+                                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${product.status === "Ativo"
+                                                ? "bg-green-50 text-green-700 border border-green-200"
+                                                : "bg-red-50 text-red-700 border border-red-200"
+                                                }`}
                                         >
-                                            <Pencil className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => onDelete(product)}
-                                            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                            title="Excluir"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    </div>
+                                            {product.status}
+                                        </span>
+                                    </td>
+
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => onEdit(product)}
+                                                className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                                                title="Editar"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => onDelete(product)}
+                                                className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-400">
+                                    Nenhum produto encontrado para os filtros selecionados.
                                 </td>
                             </tr>
-                        );
-                    })}
-
-                    {filtered.length === 0 && (
-                        <tr>
-                            <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-400">
-                                Nenhum produto encontrado para os filtros selecionados.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
             <Modal open={isFilterModalOpen} onClose={() => setFilterModalOpen(false)} title="Filtrar produtos">
                 <div className="space-y-4">

@@ -4,6 +4,22 @@
   --font-mulish: var(--font-mulish) --font-mulish: var(--font-geist-mono);
 }
 
+html {
+  font-size: clamp(13px, 0.75vw + 10px, 16px);
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: clamp(12px, 2.5vw + 6px, 14px);
+  }
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,

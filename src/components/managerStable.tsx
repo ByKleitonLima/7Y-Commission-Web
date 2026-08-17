@@ -96,7 +96,7 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
 
     return (
         <div className="mt-8 rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center gap-3 border-b border-gray-100 p-4">
+            <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
                     <Search className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} />
                     <input
@@ -110,7 +110,7 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
                 <button
                     type="button"
                     onClick={openFilterModal}
-                    className="relative flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
+                    className="relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
                 >
                     <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} />
                     Filtros
@@ -122,80 +122,157 @@ export default function ManagersTable({ managers, onEdit, onDelete }: ManagersTa
                 </button>
             </div>
 
-            <table className="w-full text-left text-sm">
-                <thead>
-                    <tr className="border-b border-gray-100 text-gray-500">
-                        <th className="px-4 py-3 font-medium">ID Sup</th>
-                        <th className="px-4 py-3 font-medium">Código</th>
-                        <th className="px-4 py-3 font-medium">Nome</th>
-                        <th className="px-4 py-3 font-medium">Cargo</th>
-                        <th className="px-4 py-3 font-medium">Contato</th>
-                        <th className="px-4 py-3 font-medium">Vendedores</th>
-                        <th className="px-4 py-3 font-medium">Pedidos</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {filtered.map((manager) => (
-                        <tr key={manager.id} className="border-b border-gray-50 last:border-0">
-                            <td className="px-4 py-3 text-gray-500">{manager.supId}</td>
-                            <td className="px-4 py-3 text-gray-500">{manager.code}</td>
-                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">
-                                <div className="flex items-center gap-2">
-                                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
-                                        {manager.photoUrl ? (
-                                            <img src={manager.photoUrl} alt={manager.name} className="h-full w-full object-cover" />
-                                        ) : (
-                                            <User className="h-4 w-4 text-gray-400" strokeWidth={1.75} />
-                                        )}
-                                    </div>
-                                    {manager.name}
+            {/* ---- MOBILE: lista de cards (abaixo de md) ---- */}
+            <div className="divide-y divide-gray-100 md:hidden">
+                {filtered.map((manager) => (
+                    <div key={manager.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
+                                    {manager.photoUrl ? (
+                                        <img src={manager.photoUrl} alt={manager.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <User className="h-5 w-5 text-gray-400" strokeWidth={1.75} />
+                                    )}
                                 </div>
-                            </td>
-                            <td className="px-4 py-3 text-gray-500">{manager.role || "-"}</td>
-                            <td className="px-4 py-3 text-gray-500">
-                                <div className="flex flex-col text-xs">
-                                    <span>{manager.email || "-"}</span>
-                                    <span>{manager.phone || "-"}</span>
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-[#2d2d2d]">{manager.name}</p>
+                                    <p className="text-xs text-gray-500">{manager.role || "-"}</p>
                                 </div>
-                            </td>
-                            <td className="px-4 py-3 text-gray-500">{Number(manager.sellersCount) || 0}</td>
-                            <td className="px-4 py-3 text-gray-500">{Number(manager.ordersCount) || 0}</td>
-                            <td className="px-4 py-3">
-                                <StatusBadge
-                                    label={manager.status}
-                                    variant={manager.status === "Ativo" ? "success" : "danger"}
-                                />
-                            </td>
-                            <td className="px-4 py-3">
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => onEdit?.(manager)}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
-                                    >
-                                        <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
-                                    <button
-                                        onClick={() => onDelete?.(manager)}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                    >
-                                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                            </div>
+                            <StatusBadge
+                                label={manager.status}
+                                variant={manager.status === "Ativo" ? "success" : "danger"}
+                            />
+                        </div>
 
-                    {filtered.length === 0 && (
-                        <tr>
-                            <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
-                                Nenhum gerente encontrado.
-                            </td>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <p className="text-gray-400">ID Sup</p>
+                                <p className="font-medium text-gray-700">{manager.supId || "-"}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400">Código</p>
+                                <p className="font-medium text-gray-700">{manager.code || "-"}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400">Vendedores</p>
+                                <p className="font-medium text-gray-700">{Number(manager.sellersCount) || 0}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400">Pedidos</p>
+                                <p className="font-medium text-gray-700">{Number(manager.ordersCount) || 0}</p>
+                            </div>
+                            <div className="col-span-2">
+                                <p className="text-gray-400">Contato</p>
+                                <p className="truncate font-medium text-gray-700">{manager.email || "-"}</p>
+                                <p className="font-medium text-gray-700">{manager.phone || "-"}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                            <button
+                                onClick={() => onEdit?.(manager)}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                            >
+                                <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                Editar
+                            </button>
+                            <button
+                                onClick={() => onDelete?.(manager)}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                            >
+                                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                Excluir
+                            </button>
+                        </div>
+                    </div>
+                ))}
+
+                {filtered.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400">
+                        Nenhum gerente encontrado.
+                    </div>
+                )}
+            </div>
+
+            {/* ---- DESKTOP: tabela (a partir de md) ---- */}
+            <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="border-b border-gray-100 text-gray-500">
+                            <th className="px-4 py-3 font-medium">ID Sup</th>
+                            <th className="px-4 py-3 font-medium">Código</th>
+                            <th className="px-4 py-3 font-medium">Nome</th>
+                            <th className="px-4 py-3 font-medium">Cargo</th>
+                            <th className="px-4 py-3 font-medium">Contato</th>
+                            <th className="px-4 py-3 font-medium">Vendedores</th>
+                            <th className="px-4 py-3 font-medium">Pedidos</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
+                            <th className="px-4 py-3 font-medium">Ações</th>
                         </tr>
-                    )}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {filtered.map((manager) => (
+                            <tr key={manager.id} className="border-b border-gray-50 last:border-0">
+                                <td className="px-4 py-3 text-gray-500">{manager.supId}</td>
+                                <td className="px-4 py-3 text-gray-500">{manager.code}</td>
+                                <td className="px-4 py-3 font-semibold text-[#2d2d2d]">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center">
+                                            {manager.photoUrl ? (
+                                                <img src={manager.photoUrl} alt={manager.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <User className="h-4 w-4 text-gray-400" strokeWidth={1.75} />
+                                            )}
+                                        </div>
+                                        {manager.name}
+                                    </div>
+                                </td>
+                                <td className="px-4 py-3 text-gray-500">{manager.role || "-"}</td>
+                                <td className="px-4 py-3 text-gray-500">
+                                    <div className="flex flex-col text-xs">
+                                        <span>{manager.email || "-"}</span>
+                                        <span>{manager.phone || "-"}</span>
+                                    </div>
+                                </td>
+                                <td className="px-4 py-3 text-gray-500">{Number(manager.sellersCount) || 0}</td>
+                                <td className="px-4 py-3 text-gray-500">{Number(manager.ordersCount) || 0}</td>
+                                <td className="px-4 py-3">
+                                    <StatusBadge
+                                        label={manager.status}
+                                        variant={manager.status === "Ativo" ? "success" : "danger"}
+                                    />
+                                </td>
+                                <td className="px-4 py-3">
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => onEdit?.(manager)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                        >
+                                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                        <button
+                                            onClick={() => onDelete?.(manager)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                        >
+                                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
+                                    Nenhum gerente encontrado.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
             <Modal open={isFilterModalOpen} onClose={() => setFilterModalOpen(false)} title="Filtrar gerentes">
                 <div className="space-y-4">

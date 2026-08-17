@@ -111,7 +111,7 @@ export default function ClientsTable({ clients, onEdit, onDelete }: ClientsTable
 
     return (
         <div className="mt-8 rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center gap-3 border-b border-gray-100 p-4">
+            <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
                     <Search className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} />
                     <input
@@ -125,7 +125,7 @@ export default function ClientsTable({ clients, onEdit, onDelete }: ClientsTable
                 <button
                     type="button"
                     onClick={openFilterModal}
-                    className="relative flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
+                    className="relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-[#2d2d2d] transition-colors hover:bg-gray-50"
                 >
                     <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} />
                     Filtros
@@ -137,62 +137,121 @@ export default function ClientsTable({ clients, onEdit, onDelete }: ClientsTable
                 </button>
             </div>
 
-            <table className="w-full text-left text-sm">
-                <thead>
-                    <tr className="border-b border-gray-100 text-gray-500">
-                        <th className="px-4 py-3 font-medium">ID Sup</th>
-                        <th className="px-4 py-3 font-medium">Vendedor</th>
-                        <th className="px-4 py-3 font-medium">Código</th>
-                        <th className="px-4 py-3 font-medium">Nome</th>
-                        <th className="px-4 py-3 font-medium">Região</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {filtered.map((client) => (
-                        <tr key={client.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 text-gray-500">{client.supId || "-"}</td>
-                            <td className="px-4 py-3 text-gray-500">{client.sellerCode || client.sellerName || "-"}</td>
-                            <td className="px-4 py-3 text-gray-500">{client.code || "-"}</td>
-                            <td className="px-4 py-3 font-semibold text-[#2d2d2d]">{client.name}</td>
-                            <td className="px-4 py-3 text-gray-500">{client.region || "-"}</td>
-                            <td className="px-4 py-3">
-                                <StatusBadge
-                                    label={client.status || "Ativo"}
-                                    variant={client.status === "Ativo" ? "success" : "danger"}
-                                />
-                            </td>
-                            <td className="px-4 py-3">
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => onEdit?.(client)}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
-                                        title="Editar"
-                                    >
-                                        <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
-                                    <button
-                                        onClick={() => onDelete?.(client)}
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                        title="Excluir"
-                                    >
-                                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+            {/* ---- MOBILE: cards ---- */}
+            <div className="divide-y divide-gray-100 md:hidden">
+                {filtered.map((client) => (
+                    <div key={client.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[#2d2d2d]">{client.name}</p>
+                                <p className="text-xs text-gray-500">Código: {client.code || "-"}</p>
+                            </div>
+                            <StatusBadge
+                                label={client.status || "Ativo"}
+                                variant={client.status === "Ativo" ? "success" : "danger"}
+                            />
+                        </div>
 
-                    {filtered.length === 0 && (
-                        <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
-                                Nenhum cliente encontrado.
-                            </td>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <p className="text-gray-400">ID Sup</p>
+                                <p className="font-medium text-gray-700">{client.supId || "-"}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400">Vendedor</p>
+                                <p className="truncate font-medium text-gray-700">{client.sellerCode || client.sellerName || "-"}</p>
+                            </div>
+                            <div className="col-span-2">
+                                <p className="text-gray-400">Região</p>
+                                <p className="font-medium text-gray-700">{client.region || "-"}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                            <button
+                                onClick={() => onEdit?.(client)}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                            >
+                                <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                Editar
+                            </button>
+                            <button
+                                onClick={() => onDelete?.(client)}
+                                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                            >
+                                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                Excluir
+                            </button>
+                        </div>
+                    </div>
+                ))}
+
+                {filtered.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400">
+                        Nenhum cliente encontrado.
+                    </div>
+                )}
+            </div>
+
+            {/* ---- DESKTOP: tabela ---- */}
+            <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="border-b border-gray-100 text-gray-500">
+                            <th className="px-4 py-3 font-medium">ID Sup</th>
+                            <th className="px-4 py-3 font-medium">Vendedor</th>
+                            <th className="px-4 py-3 font-medium">Código</th>
+                            <th className="px-4 py-3 font-medium">Nome</th>
+                            <th className="px-4 py-3 font-medium">Região</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
+                            <th className="px-4 py-3 font-medium">Ações</th>
                         </tr>
-                    )}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {filtered.map((client) => (
+                            <tr key={client.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                <td className="px-4 py-3 text-gray-500">{client.supId || "-"}</td>
+                                <td className="px-4 py-3 text-gray-500">{client.sellerCode || client.sellerName || "-"}</td>
+                                <td className="px-4 py-3 text-gray-500">{client.code || "-"}</td>
+                                <td className="px-4 py-3 font-semibold text-[#2d2d2d]">{client.name}</td>
+                                <td className="px-4 py-3 text-gray-500">{client.region || "-"}</td>
+                                <td className="px-4 py-3">
+                                    <StatusBadge
+                                        label={client.status || "Ativo"}
+                                        variant={client.status === "Ativo" ? "success" : "danger"}
+                                    />
+                                </td>
+                                <td className="px-4 py-3">
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => onEdit?.(client)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                            title="Editar"
+                                        >
+                                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                        <button
+                                            onClick={() => onDelete?.(client)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                                    Nenhum cliente encontrado.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
             <Modal open={isFilterModalOpen} onClose={() => setFilterModalOpen(false)} title="Filtrar clientes">
                 <div className="space-y-4">

@@ -13,6 +13,34 @@ import { useOrgData } from "@/context/orgDataContext";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 
+// Converte valores numéricos vindos da planilha respeitando o formato
+// brasileiro (milhar com ponto, decimal com vírgula). Usar apenas
+// `.replace(",", ".")` (como era feito antes) NÃO remove o ponto de
+// milhar — um valor como "1.234,56" virava a string "1.234.56", e
+// parseFloat parava no segundo ponto, lendo só "1.234". Essa era a causa
+// dos preços/valores errados ao importar a planilha de produtos.
+function toNumber(value: unknown): number {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return 0;
+
+    // Remove qualquer coisa que não seja dígito, ponto, vírgula ou sinal.
+    const cleaned = trimmed.replace(/[^\d.,-]/g, "");
+    if (!cleaned) return 0;
+
+    if (cleaned.includes(",")) {
+        // Formato BR: pontos são separador de milhar, vírgula é decimal.
+        const normalized = cleaned.replace(/\./g, "").replace(",", ".");
+        const parsed = Number(normalized);
+        if (!Number.isNaN(parsed)) return parsed;
+    }
+
+    // Sem vírgula: já pode ser um número "puro" (ex: 1234.56) vindo direto
+    // de uma célula numérica da planilha.
+    const fallback = Number(cleaned);
+    return Number.isNaN(fallback) ? 0 : fallback;
+}
+
 export default function Products() {
     const { suppliers = [], refresh } = useOrgData();
     const [products, setProducts] = useState<Product[]>([]);
@@ -177,7 +205,11 @@ export default function Products() {
                 for (const row of validRows) {
                     const code = String(row[colCode !== -1 ? colCode : 0] || "").trim();
                     const name = String(row[colName !== -1 ? colName : 1] || "").trim();
-                    const price = parseFloat(String(row[colPrice !== -1 ? colPrice : 2] || "0").replace(",", ".")) || 0;
+                    // CORREÇÃO: antes era `parseFloat(String(...).replace(",", "."))`,
+                    // que não remove o ponto de milhar e cortava o valor
+                    // (ex: "1.234,56" virava 1.234). Agora usa toNumber(),
+                    // que trata corretamente o formato BR.
+                    const price = toNumber(row[colPrice !== -1 ? colPrice : 2]);
                     const supplierCode = String(row[colSupplier !== -1 ? colSupplier : 3] || "").trim();
                     const dockValue = colDock !== -1 ? String(row[colDock] || "").trim().toUpperCase() : "";
 
@@ -295,7 +327,7 @@ export default function Products() {
                 className="hidden"
             />
 
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 <RefreshButton onRefresh={async () => { await refresh(); await loadProducts(); }} />
 
                 <button
@@ -317,7 +349,7 @@ export default function Products() {
                 </button>
             </div>
 
-            <div className="mt-6 flex gap-6">
+            <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Total de produtos" value={total} />
                 <StatCard label="Ativos" value={active} />
                 <StatCard label="Inativos" value={inactive} />
