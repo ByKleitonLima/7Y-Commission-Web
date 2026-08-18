@@ -315,13 +315,7 @@ export default function PricesHistoryPage() {
                 </div>
             )}
 
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-semibold text-[#2d2d2d]">Preços & Histórico de Estoque</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        Uma única planilha (estoque + preços) por envio. Cada envio vira um snapshot completo e imutável.
-                    </p>
-                </div>
+            <div className="flex items-center justify-end mt-4">
                 <RefreshButton
                     onRefresh={async () => {
                         await loadHistory();

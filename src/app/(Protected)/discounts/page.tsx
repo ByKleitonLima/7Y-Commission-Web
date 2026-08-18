@@ -168,14 +168,8 @@ export default function DiscountsPage() {
 
     return (
         <div>
-            <div className="flex items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl font-semibold text-[#2d2d2d]">Descontos de Comissão</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        Devoluções (DEV. VEND NF / NF-B) importadas automaticamente da planilha, mais lançamentos manuais por vendedor.
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
+            <div className="flex items-center justify-end">
+                <div className="flex items-center gap-3 mt-4">
                     <RefreshButton onRefresh={handleRefreshAll} />
                     <button
                         onClick={handleOpenCreate}

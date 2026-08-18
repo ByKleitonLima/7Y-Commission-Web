@@ -14,21 +14,28 @@ import {
     buildDashboardAggregates,
     buildDailyTotals,
     filterSaleOrders,
-    getSortedFamilies,
+    getSortedGroups,
     getSortedRegions,
-    extractFamily,
+    extractGroup,
     extractRegion,
     filterByDateRange,
 } from "@/lib/salesAggregations";
 
-const ALL_FAMILIES = "Todas";
+const ALL_GROUPS = "Todas";
 const ALL_REGIONS = "Todas";
 
 export default function Home() {
     const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
-    const [selectedFamily, setSelectedFamily] = useState<string>(ALL_FAMILIES);
+    // Filtro geral de mercadoria/grupo (topo da tela) — precisa usar o mesmo
+    // critério (extractGroup / coluna GRUPO) que os gráficos usam para
+    // agrupar, senão as opções do filtro nunca batem com o que aparece nos
+    // gráficos (era esse o bug: usava extractFamily/getSortedFamilies, que
+    // é uma coluna diferente da planilha).
+    const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUPS);
     const [selectedRegion, setSelectedRegion] = useState<string>(ALL_REGIONS);
-    const [chartFamily, setChartFamily] = useState<string>(ALL_FAMILIES);
+    // Filtro de mercadoria específico do gráfico de evolução do faturamento —
+    // mesma correção: agora usa extractGroup em vez de extractFamily.
+    const [chartGroup, setChartGroup] = useState<string>(ALL_GROUPS);
     const { records, isLoading, refresh } = useSalesData();
 
     const handleDateChange = useCallback((from: string, to: string) => {
@@ -48,19 +55,23 @@ export default function Home() {
         [saleOrderRecords, dateRange, hasDateFilter]
     );
 
-    const familyOptions = useMemo(() => getSortedFamilies(recordsInRange), [recordsInRange]);
+    // Opções de mercadoria (grupo) e região são calculadas a partir dos
+    // registros já filtrados por data, mas antes do filtro de
+    // grupo/região em si — assim o dropdown sempre mostra todas as
+    // mercadorias disponíveis no período selecionado.
+    const groupOptions = useMemo(() => getSortedGroups(recordsInRange), [recordsInRange]);
     const regionOptions = useMemo(() => getSortedRegions(recordsInRange), [recordsInRange]);
 
     const filteredRecords = useMemo(() => {
-        if (selectedFamily === ALL_FAMILIES && selectedRegion === ALL_REGIONS) return recordsInRange;
+        if (selectedGroup === ALL_GROUPS && selectedRegion === ALL_REGIONS) return recordsInRange;
         return recordsInRange.filter((record) => {
-            const matchesFamily =
-                selectedFamily === ALL_FAMILIES || extractFamily(record).toLowerCase() === selectedFamily.toLowerCase();
+            const matchesGroup =
+                selectedGroup === ALL_GROUPS || extractGroup(record).toLowerCase() === selectedGroup.toLowerCase();
             const matchesRegion =
                 selectedRegion === ALL_REGIONS || extractRegion(record).toLowerCase() === selectedRegion.toLowerCase();
-            return matchesFamily && matchesRegion;
+            return matchesGroup && matchesRegion;
         });
-    }, [recordsInRange, selectedFamily, selectedRegion]);
+    }, [recordsInRange, selectedGroup, selectedRegion]);
 
     const aggregates = useMemo(
         () => buildDashboardAggregates(filteredRecords, dateRange.from || undefined, dateRange.to || undefined),
@@ -72,11 +83,11 @@ export default function Home() {
     }, [filteredRecords]);
 
     const chartRecords = useMemo(() => {
-        if (chartFamily === ALL_FAMILIES) return filteredRecords;
+        if (chartGroup === ALL_GROUPS) return filteredRecords;
         return filteredRecords.filter(
-            (record) => extractFamily(record).toLowerCase() === chartFamily.toLowerCase()
+            (record) => extractGroup(record).toLowerCase() === chartGroup.toLowerCase()
         );
-    }, [filteredRecords, chartFamily]);
+    }, [filteredRecords, chartGroup]);
 
     const dailyTotalsForChart = useMemo(
         () => buildDailyTotals(chartRecords, dateRange.from || undefined, dateRange.to || undefined),
@@ -104,13 +115,13 @@ export default function Home() {
                 <div className="min-w-[160px] flex-1 sm:flex-none">
                     <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">Grupos</label>
                     <select
-                        value={selectedFamily}
-                        onChange={(e) => setSelectedFamily(e.target.value)}
+                        value={selectedGroup}
+                        onChange={(e) => setSelectedGroup(e.target.value)}
                         className="h-10 w-full sm:max-w-[220px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                     >
-                        <option value={ALL_FAMILIES}>Todas mercadorias</option>
-                        {familyOptions.map((f) => (
-                            <option key={f} value={f}>{f}</option>
+                        <option value={ALL_GROUPS}>Todas mercadorias</option>
+                        {groupOptions.map((g) => (
+                            <option key={g} value={g}>{g}</option>
                         ))}
                     </select>
                 </div>
@@ -155,7 +166,7 @@ export default function Home() {
 
             {!hasData && !isLoading && (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
-                    Nenhum registro de venda encontrado{hasDateFilter || selectedFamily !== ALL_FAMILIES || selectedRegion !== ALL_REGIONS ? " para os filtros selecionados" : ""}. Vá em{" "}
+                    Nenhum registro de venda encontrado{hasDateFilter || selectedGroup !== ALL_GROUPS || selectedRegion !== ALL_REGIONS ? " para os filtros selecionados" : ""}. Vá em{" "}
                     <span className="font-medium text-[#2d2d2d]">Importar</span> no menu pra carregar dados{hasDateFilter ? " ou troque os filtros" : ""}.
                 </div>
             )}
@@ -190,13 +201,13 @@ export default function Home() {
                                     Grupo
                                 </label>
                                 <select
-                                    value={chartFamily}
-                                    onChange={(e) => setChartFamily(e.target.value)}
+                                    value={chartGroup}
+                                    onChange={(e) => setChartGroup(e.target.value)}
                                     className="h-10 w-full max-w-[240px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
                                 >
-                                    <option value={ALL_FAMILIES}>Todas mercadorias</option>
-                                    {familyOptions.map((f) => (
-                                        <option key={f} value={f}>{f}</option>
+                                    <option value={ALL_GROUPS}>Todas mercadorias</option>
+                                    {groupOptions.map((g) => (
+                                        <option key={g} value={g}>{g}</option>
                                     ))}
                                 </select>
                             </div>
