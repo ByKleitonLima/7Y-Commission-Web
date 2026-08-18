@@ -15,6 +15,7 @@ import {
     LogOut,
     History,
     ClipboardList,
+    Percent,
     Menu as MenuIcon,
     X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export const NAV_ITEMS = [
     { label: "Dashboard", href: "/home", icon: LayoutDashboard, pageTitle: "Dashbord de comissão" },
     { label: "Gerentes", href: "/managers", icon: UserCog, pageTitle: "Gerentes de vendas" },
     { label: "Vendedores", href: "/sellers", icon: Users, pageTitle: "Vendedores" },
+    { label: "Comissões", href: "/commissions", icon: Percent, pageTitle: "Comissões" },
     { label: "Descontos", href: "/discounts", icon: ClipboardList, pageTitle: "Descontos de Comissão" },
     { label: "Clientes", href: "/clients", icon: Truck, pageTitle: "Clientes" },
     { label: "Fornecedores", href: "/suppliers", icon: Package, pageTitle: "Fornecedores" },
