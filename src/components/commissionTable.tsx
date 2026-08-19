@@ -15,6 +15,9 @@ export interface CommissionRow {
     hasOverride?: boolean;
     originalCommission?: number;
     originalPercent?: number;
+    // Valor lançado na tela de Descontos (seller_discounts) já abatido
+    // do "commission" acima. Só existe para linhas de vendedor.
+    manualDiscount?: number;
 }
 
 type SortKey = "netRevenue" | "commission" | "effectivePercent" | "extraValue" | "orders";
@@ -138,6 +141,11 @@ export default function CommissionTable({
                                         <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                                             Ajustado
                                         </span>
+                                    )}
+                                    {!!r.manualDiscount && r.manualDiscount > 0 && (
+                                        <div className="mt-0.5 text-[11px] font-normal text-red-500">
+                                            − {currencyFmt(r.manualDiscount)} desconto (Devoluções)
+                                        </div>
                                     )}
                                 </td>
                                 <td className="px-4 py-3 text-gray-700">{percentFmt(r.effectivePercent)}</td>

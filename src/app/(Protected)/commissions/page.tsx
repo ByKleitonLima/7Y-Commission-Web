@@ -28,6 +28,7 @@ import {
     fetchSellerGroupPercents,
     SellerGroupPercentRow,
 } from "@/services/groupCommissionSettingsService";
+import { fetchManualDiscounts, ManualDiscount } from "@/services/discountService";
 
 const currencyFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -54,6 +55,16 @@ export default function CommissionsPage() {
     const [isLoadingGroupPercents, setIsLoadingGroupPercents] = useState(false);
     const [editingGroupSeller, setEditingGroupSeller] = useState<SellerGroupCommissionAggregate | null>(null);
 
+    // Descontos manuais lançados na tela de Devoluções/Descontos
+    // (tabela seller_discounts). As devoluções automáticas (linhas
+    // DEV.VENDA NF/NF-B) JÁ são descontadas sozinhas aqui, porque elas
+    // entram com VLR_LIQUIDO negativo dentro do cálculo por grupo em
+    // groupCommissionAggregations.ts. O que faltava era abater também
+    // os lançamentos manuais feitos na tela de Descontos — é isso que
+    // este bloco resolve.
+    const [manualDiscounts, setManualDiscounts] = useState<ManualDiscount[]>([]);
+    const [isLoadingManualDiscounts, setIsLoadingManualDiscounts] = useState(false);
+
     const loadOverrides = useCallback(async () => {
         setIsLoadingOverrides(true);
         try {
@@ -74,6 +85,16 @@ export default function CommissionsPage() {
         }
     }, []);
 
+    const loadManualDiscounts = useCallback(async () => {
+        setIsLoadingManualDiscounts(true);
+        try {
+            const data = await fetchManualDiscounts();
+            setManualDiscounts(data);
+        } finally {
+            setIsLoadingManualDiscounts(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadOverrides();
     }, [loadOverrides]);
@@ -81,6 +102,10 @@ export default function CommissionsPage() {
     useEffect(() => {
         loadGroupPercents();
     }, [loadGroupPercents]);
+
+    useEffect(() => {
+        loadManualDiscounts();
+    }, [loadManualDiscounts]);
 
     const handleDateChange = useCallback((from: string, to: string) => {
         setDateRange({ from, to });
@@ -123,11 +148,38 @@ export default function CommissionsPage() {
         [overrides]
     );
 
+    // Soma os descontos manuais por vendedor. Usa o código do vendedor
+    // como chave principal; quando o lançamento não tem código (foi
+    // preenchido só com o nome), cai no nome como chave de fallback —
+    // mesmo padrão de agrupamento usado em discountAggregations.ts.
+    const manualDiscountsBySeller = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const d of manualDiscounts) {
+            const amount = Number(d.amount) || 0;
+            if (amount <= 0) continue;
+
+            const code = (d.sellerCode || "").trim();
+            const key = code || `NOME:${(d.sellerName || "").trim().toUpperCase()}`;
+            map.set(key, (map.get(key) || 0) + amount);
+        }
+        return map;
+    }, [manualDiscounts]);
+
+    const getManualDiscountFor = useCallback(
+        (sellerCode: string, sellerName: string) => {
+            const byCode = sellerCode ? manualDiscountsBySeller.get(sellerCode) : undefined;
+            if (byCode) return byCode;
+            const byName = manualDiscountsBySeller.get(`NOME:${(sellerName || "").trim().toUpperCase()}`);
+            return byName || 0;
+        },
+        [manualDiscountsBySeller]
+    );
+
     const sellerRows: CommissionRow[] = useMemo(
         () =>
             sellers.map((s) => {
                 const ov = findOverride("seller", s.sellerCode);
-                const commission = ov?.overrideCommission ?? (
+                const baseCommission = ov?.overrideCommission ?? (
                     ov?.overridePercent != null ? (s.netRevenue * ov.overridePercent) / 100 : s.commission
                 );
                 const effectivePercent =
@@ -135,8 +187,13 @@ export default function CommissionsPage() {
                     (ov?.overrideCommission != null && s.netRevenue !== 0
                         ? (ov.overrideCommission / s.netRevenue) * 100
                         : s.netRevenue !== 0
-                        ? (s.commission / s.netRevenue) * 100
+                        ? (baseCommission / s.netRevenue) * 100
                         : 0);
+
+                // Desconto manual (tela de Devoluções/Descontos) abatido
+                // do valor final pago ao vendedor.
+                const manualDiscount = getManualDiscountFor(s.sellerCode, s.sellerName);
+                const commission = baseCommission - manualDiscount;
 
                 return {
                     code: s.sellerCode,
@@ -150,9 +207,10 @@ export default function CommissionsPage() {
                     hasOverride: !!ov,
                     originalCommission: s.commission,
                     originalPercent: s.netRevenue !== 0 ? (s.commission / s.netRevenue) * 100 : 0,
+                    manualDiscount,
                 };
             }),
-        [sellers, findOverride]
+        [sellers, findOverride, getManualDiscountFor]
     );
 
     const managerRows: CommissionRow[] = useMemo(
@@ -188,17 +246,20 @@ export default function CommissionsPage() {
         [managers, findOverride]
     );
 
-    // Totais refletem os valores FINAIS (com ajustes manuais aplicados),
-    // já que é isso que efetivamente será pago.
+    // Totais refletem os valores FINAIS (com ajustes manuais e descontos
+    // da tela de Devoluções já aplicados), já que é isso que efetivamente
+    // será pago.
     const totals = useMemo(() => {
         const representativeCommission = sellerRows.reduce((sum, r) => sum + r.commission, 0);
         const managerCommission = managerRows.reduce((sum, r) => sum + r.commission, 0);
+        const manualDiscountsTotal = sellerRows.reduce((sum, r) => sum + (r.manualDiscount || 0), 0);
         return {
             netRevenue: baseTotals.netRevenue,
             representativeCommission,
             managerCommission,
             premium: baseTotals.premium,
             orders: baseTotals.orders,
+            manualDiscountsTotal,
         };
     }, [sellerRows, managerRows, baseTotals]);
 
@@ -249,10 +310,10 @@ export default function CommissionsPage() {
     }, [editingGroupSeller, groupsFound, groupPercentOverridesMap]);
 
     const handleRefreshAll = async () => {
-        await Promise.all([refresh(), loadOverrides(), loadGroupPercents()]);
+        await Promise.all([refresh(), loadOverrides(), loadGroupPercents(), loadManualDiscounts()]);
     };
 
-    const isPageLoading = isLoading || isLoadingOverrides || isLoadingGroupPercents;
+    const isPageLoading = isLoading || isLoadingOverrides || isLoadingGroupPercents || isLoadingManualDiscounts;
 
     return (
         <div className="relative pb-12">
@@ -286,13 +347,16 @@ export default function CommissionsPage() {
                 <strong className="text-gray-700">2% sobre o GRUPO2</strong> (devoluções já descontadas do
                 faturamento líquido). Gerente recebe <strong className="text-gray-700">1/4 do total</strong>{" "}
                 que os vendedores dele recebem. Use o ícone <Percent className="inline h-3 w-3" /> na
-                linha do vendedor pra combinar um percentual diferente por grupo.
+                linha do vendedor pra combinar um percentual diferente por grupo. Descontos lançados
+                manualmente na tela de <strong className="text-gray-700">Descontos</strong> também são
+                abatidos automaticamente do valor final aqui.
             </div>
 
             <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Faturamento Líquido" value={currencyFmt(totals.netRevenue)} />
                 <StatCard label="Comissão Vendedores" value={currencyFmt(totals.representativeCommission)} />
                 <StatCard label="Comissão Gerentes (1/4)" value={currencyFmt(totals.managerCommission)} />
+                <StatCard label="Descontos manuais abatidos" value={currencyFmt(totals.manualDiscountsTotal)} />
                 <StatCard label="Prêmios Pagos" value={currencyFmt(totals.premium)} />
                 <StatCard label="Pedidos" value={totals.orders.toLocaleString("pt-BR")} />
             </div>
