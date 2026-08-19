@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, ChangeEvent } from "react";
-import { ChevronUp, ChevronDown, Search, Pencil } from "lucide-react";
+import { ChevronUp, ChevronDown, Search, Pencil, Percent } from "lucide-react";
 
 export interface CommissionRow {
     code: string;
@@ -28,6 +28,9 @@ interface CommissionTableProps {
     searchPlaceholder: string;
     emptyLabel: string;
     onEdit?: (row: CommissionRow) => void;
+    // Só usado na aba de Vendedores: abre o modal de % por grupo
+    // (GRUPO1/GRUPO2) daquele vendedor específico.
+    onEditGroupPercent?: (row: CommissionRow) => void;
 }
 
 const currencyFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -43,6 +46,7 @@ export default function CommissionTable({
     searchPlaceholder,
     emptyLabel,
     onEdit,
+    onEditGroupPercent,
 }: CommissionTableProps) {
     const [search, setSearch] = useState("");
     const [sortKey, setSortKey] = useState<SortKey>("commission");
@@ -70,6 +74,8 @@ export default function CommissionTable({
             return sortDir === "asc" ? diff : -diff;
         });
     }, [rows, search, sortKey, sortDir]);
+
+    const hasActionsColumn = Boolean(onEdit || onEditGroupPercent);
 
     const SortHeader = ({ label, sortField }: { label: string; sortField: SortKey }) => (
         <th className="px-4 py-3 font-medium">
@@ -114,7 +120,7 @@ export default function CommissionTable({
                             <SortHeader label="% Efetivo" sortField="effectivePercent" />
                             <SortHeader label={extraColumnLabel} sortField="extraValue" />
                             <SortHeader label="Pedidos" sortField="orders" />
-                            {onEdit && <th className="px-4 py-3 font-medium">Ações</th>}
+                            {hasActionsColumn && <th className="px-4 py-3 font-medium">Ações</th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -139,15 +145,28 @@ export default function CommissionTable({
                                     {extraColumnLabel === "Prêmio" ? currencyFmt(r.extraValue) : numberFmt(r.extraValue)}
                                 </td>
                                 <td className="px-4 py-3 text-gray-500">{r.orders.toLocaleString("pt-BR")}</td>
-                                {onEdit && (
+                                {hasActionsColumn && (
                                     <td className="px-4 py-3">
-                                        <button
-                                            onClick={() => onEdit(r)}
-                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
-                                            title="Ajustar valor/percentual"
-                                        >
-                                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                                        </button>
+                                        <div className="flex gap-2">
+                                            {onEditGroupPercent && (
+                                                <button
+                                                    onClick={() => onEditGroupPercent(r)}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                                    title="Definir % de comissão por grupo (GRUPO1/GRUPO2)"
+                                                >
+                                                    <Percent className="h-4 w-4" strokeWidth={1.75} />
+                                                </button>
+                                            )}
+                                            {onEdit && (
+                                                <button
+                                                    onClick={() => onEdit(r)}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                                    title="Ajustar valor final da comissão"
+                                                >
+                                                    <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 )}
                             </tr>
@@ -155,7 +174,7 @@ export default function CommissionTable({
 
                         {filteredSorted.length === 0 && (
                             <tr>
-                                <td colSpan={onEdit ? 8 : 7} className="px-4 py-8 text-center text-sm text-gray-400">
+                                <td colSpan={hasActionsColumn ? 8 : 7} className="px-4 py-8 text-center text-sm text-gray-400">
                                     {emptyLabel}
                                 </td>
                             </tr>

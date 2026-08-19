@@ -1,15 +1,22 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { Loader2, Users, UserCog } from "lucide-react";
+import { Loader2, Users, UserCog, Percent } from "lucide-react";
 import StatCard from "@/components/statCard";
 import RefreshButton from "@/components/refreshButton";
 import DateRangeFilter from "@/components/dateRangeFilter";
 import CommissionTable, { CommissionRow } from "@/components/commissionTable";
 import EditCommissionModal from "@/components/editCommissionModal";
+import EditGroupPercentModal from "@/components/editGroupPercentModal";
 import { useSalesData } from "@/context/salesDataContext";
 import { useAuth } from "@/context/AuthContext";
-import { buildCommissionAggregates } from "@/lib/commissionAggregations";
+import {
+    buildGroupCommissionAggregates,
+    buildGroupPercentOverridesMap,
+    resolveGroupPercent,
+    DEFAULT_GROUP_PERCENTS,
+    SellerGroupCommissionAggregate,
+} from "@/lib/groupCommissionAggregations";
 import { filterByDateRange } from "@/lib/salesAggregations";
 import {
     fetchCommissionOverrides,
@@ -17,6 +24,10 @@ import {
     deleteCommissionOverrideByKey,
     CommissionOverride,
 } from "@/services/commissionOverridesService";
+import {
+    fetchSellerGroupPercents,
+    SellerGroupPercentRow,
+} from "@/services/groupCommissionSettingsService";
 
 const currencyFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -30,10 +41,18 @@ export default function CommissionsPage() {
     const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
     const [tab, setTab] = useState<Tab>("vendedores");
 
+    // Ajustes MANUAIS de valor final por período (o lápis de "Ajustar
+    // comissão"), independentes das regras de % por grupo.
     const [overrides, setOverrides] = useState<CommissionOverride[]>([]);
     const [isLoadingOverrides, setIsLoadingOverrides] = useState(false);
     const [editingRow, setEditingRow] = useState<CommissionRow | null>(null);
     const [editingType, setEditingType] = useState<"seller" | "manager">("seller");
+
+    // Percentuais customizados por vendedor/grupo (GRUPO1/GRUPO2), que
+    // substituem o padrão da tabela (3%/2%) quando definidos.
+    const [groupPercents, setGroupPercents] = useState<SellerGroupPercentRow[]>([]);
+    const [isLoadingGroupPercents, setIsLoadingGroupPercents] = useState(false);
+    const [editingGroupSeller, setEditingGroupSeller] = useState<SellerGroupCommissionAggregate | null>(null);
 
     const loadOverrides = useCallback(async () => {
         setIsLoadingOverrides(true);
@@ -45,9 +64,23 @@ export default function CommissionsPage() {
         }
     }, [dateRange.from, dateRange.to]);
 
+    const loadGroupPercents = useCallback(async () => {
+        setIsLoadingGroupPercents(true);
+        try {
+            const data = await fetchSellerGroupPercents();
+            setGroupPercents(data);
+        } finally {
+            setIsLoadingGroupPercents(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadOverrides();
     }, [loadOverrides]);
+
+    useEffect(() => {
+        loadGroupPercents();
+    }, [loadGroupPercents]);
 
     const handleDateChange = useCallback((from: string, to: string) => {
         setDateRange({ from, to });
@@ -59,22 +92,29 @@ export default function CommissionsPage() {
 
     const hasDateFilter = Boolean(dateRange.from && dateRange.to);
 
-    // IMPORTANTE: aqui NÃO filtramos por "PED. VENDA" como o Dashboard faz.
-    // A comissão paga considera vendas, devoluções (NF/NF-B) e bonificações
-    // juntas — filtrar deixaria a comissão maior do que o valor real pago,
-    // pois devoluções abatem da comissão. Os valores de representativeCommission,
-    // managerCommission e premiumPaidValue já vêm calculados da planilha
-    // (colunas AZ, BA, BB da aba DADOS — fórmulas de devolução/bonificação/
-    // desconto por estoque já aplicadas linha a linha antes da exportação).
-    // Ver comissionAggregations.ts.
+    // IMPORTANTE: assim como antes, NÃO filtramos por "PED. VENDA" aqui —
+    // a comissão soma vendas, devoluções (NF/NF-B) e bonificações juntas.
+    // As devoluções já chegam com VLR_LIQUIDO negativo, então somando o
+    // líquido por grupo (GRUPO1/GRUPO2) elas já se descontam sozinhas da
+    // comissão. Ver groupCommissionAggregations.ts.
     const recordsInRange = useMemo(
         () => (hasDateFilter ? filterByDateRange(records || [], dateRange.from, dateRange.to) : records || []),
         [records, dateRange, hasDateFilter]
     );
 
-    const { sellers, managers, totals: baseTotals } = useMemo(
-        () => buildCommissionAggregates(recordsInRange),
-        [recordsInRange]
+    const groupPercentOverridesMap = useMemo(
+        () => buildGroupPercentOverridesMap(groupPercents),
+        [groupPercents]
+    );
+
+    const {
+        sellers,
+        managers,
+        totals: baseTotals,
+        groupsFound,
+    } = useMemo(
+        () => buildGroupCommissionAggregates(recordsInRange, groupPercentOverridesMap),
+        [recordsInRange, groupPercentOverridesMap]
     );
 
     const findOverride = useCallback(
@@ -94,7 +134,9 @@ export default function CommissionsPage() {
                     ov?.overridePercent ??
                     (ov?.overrideCommission != null && s.netRevenue !== 0
                         ? (ov.overrideCommission / s.netRevenue) * 100
-                        : s.effectivePercent);
+                        : s.netRevenue !== 0
+                        ? (s.commission / s.netRevenue) * 100
+                        : 0);
 
                 return {
                     code: s.sellerCode,
@@ -107,7 +149,7 @@ export default function CommissionsPage() {
                     orders: s.orders,
                     hasOverride: !!ov,
                     originalCommission: s.commission,
-                    originalPercent: s.effectivePercent,
+                    originalPercent: s.netRevenue !== 0 ? (s.commission / s.netRevenue) * 100 : 0,
                 };
             }),
         [sellers, findOverride]
@@ -125,12 +167,14 @@ export default function CommissionsPage() {
                     ov?.overridePercent ??
                     (ov?.overrideCommission != null && m.netRevenue !== 0
                         ? (ov.overrideCommission / m.netRevenue) * 100
-                        : m.effectivePercent);
+                        : m.netRevenue !== 0
+                        ? (m.commission / m.netRevenue) * 100
+                        : 0);
 
                 return {
                     code,
                     name: m.managerName,
-                    subtitle: `${m.sellersCount} vendedor(es)`,
+                    subtitle: `${m.sellersCount} vendedor(es) · 1/4 da comissão deles`,
                     netRevenue: m.netRevenue,
                     commission,
                     effectivePercent,
@@ -138,7 +182,7 @@ export default function CommissionsPage() {
                     orders: m.orders,
                     hasOverride: !!ov,
                     originalCommission: m.commission,
-                    originalPercent: m.effectivePercent,
+                    originalPercent: m.netRevenue !== 0 ? (m.commission / m.netRevenue) * 100 : 0,
                 };
             }),
         [managers, findOverride]
@@ -186,9 +230,33 @@ export default function CommissionsPage() {
         await loadOverrides();
     };
 
+    // Abre o modal de % por grupo (GRUPO1/GRUPO2) pro vendedor da linha
+    // clicada, já preenchendo com o percentual EFETIVO atual dele
+    // (customizado, se existir, senão o padrão 3%/2%).
+    const openEditGroupPercent = (row: CommissionRow) => {
+        const sellerAgg = sellers.find((s) => s.sellerCode === row.code);
+        if (!sellerAgg) return;
+        setEditingGroupSeller(sellerAgg);
+    };
+
+    const currentGroupPercentsForEditingSeller = useMemo(() => {
+        if (!editingGroupSeller) return {};
+        const result: Record<string, number> = {};
+        groupsFound.forEach((g) => {
+            result[g] = resolveGroupPercent(editingGroupSeller.sellerCode, g, groupPercentOverridesMap);
+        });
+        return result;
+    }, [editingGroupSeller, groupsFound, groupPercentOverridesMap]);
+
+    const handleRefreshAll = async () => {
+        await Promise.all([refresh(), loadOverrides(), loadGroupPercents()]);
+    };
+
+    const isPageLoading = isLoading || isLoadingOverrides || isLoadingGroupPercents;
+
     return (
         <div className="relative pb-12">
-            {(isLoading || isLoadingOverrides) && (
+            {isPageLoading && (
                 <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3 rounded-xl bg-white p-6 shadow-xl border border-gray-100">
                         <Loader2 className="h-10 w-10 animate-spin text-[#2d2d2d]" strokeWidth={2} />
@@ -210,13 +278,21 @@ export default function CommissionsPage() {
                         </button>
                     )}
                 </div>
-                <RefreshButton onRefresh={async () => { await refresh(); await loadOverrides(); }} />
+                <RefreshButton onRefresh={handleRefreshAll} />
+            </div>
+
+            <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-2.5 text-xs text-gray-500">
+                Regra padrão: vendedor recebe <strong className="text-gray-700">3% sobre o GRUPO1</strong> e{" "}
+                <strong className="text-gray-700">2% sobre o GRUPO2</strong> (devoluções já descontadas do
+                faturamento líquido). Gerente recebe <strong className="text-gray-700">1/4 do total</strong>{" "}
+                que os vendedores dele recebem. Use o ícone <Percent className="inline h-3 w-3" /> na
+                linha do vendedor pra combinar um percentual diferente por grupo.
             </div>
 
             <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Faturamento Líquido" value={currencyFmt(totals.netRevenue)} />
                 <StatCard label="Comissão Vendedores" value={currencyFmt(totals.representativeCommission)} />
-                <StatCard label="Comissão Gerentes" value={currencyFmt(totals.managerCommission)} />
+                <StatCard label="Comissão Gerentes (1/4)" value={currencyFmt(totals.managerCommission)} />
                 <StatCard label="Prêmios Pagos" value={currencyFmt(totals.premium)} />
                 <StatCard label="Pedidos" value={totals.orders.toLocaleString("pt-BR")} />
             </div>
@@ -260,6 +336,7 @@ export default function CommissionsPage() {
                     searchPlaceholder="Buscar por vendedor, código ou gerente..."
                     emptyLabel="Nenhum vendedor encontrado para os filtros selecionados."
                     onEdit={(row) => openEdit(row, "seller")}
+                    onEditGroupPercent={openEditGroupPercent}
                 />
             )}
 
@@ -268,7 +345,7 @@ export default function CommissionsPage() {
                     title="Comissão por Gerente"
                     rows={managerRows}
                     nameColumnLabel="Gerente"
-                    subtitleColumnLabel="ID Supervisor"
+                    subtitleColumnLabel="Vendedores"
                     extraColumnLabel="Vendedores"
                     searchPlaceholder="Buscar por gerente ou ID supervisor..."
                     emptyLabel="Nenhum gerente encontrado para os filtros selecionados."
@@ -282,6 +359,16 @@ export default function CommissionsPage() {
                 row={editingRow}
                 onSave={handleSaveOverride}
                 onReset={handleResetOverride}
+            />
+
+            <EditGroupPercentModal
+                open={editingGroupSeller !== null}
+                onClose={() => setEditingGroupSeller(null)}
+                sellerCode={editingGroupSeller?.sellerCode || ""}
+                sellerName={editingGroupSeller?.sellerName || ""}
+                groups={groupsFound}
+                currentPercents={currentGroupPercentsForEditingSeller}
+                onSaved={loadGroupPercents}
             />
         </div>
     );
