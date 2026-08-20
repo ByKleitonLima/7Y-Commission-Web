@@ -8,6 +8,7 @@ import TopRankingCard from "@/components/groupProducts";
 import DailySalesChart from "@/components/graphic";
 import GroupSalesPieChart from "@/components/topRankCard";
 import SupplierRankingTable from "@/components/supplierRankingTable";
+import MercadoriaFilterModal from "@/components/mercadoriaFilterModal";
 import { useSalesData } from "@/context/salesDataContext";
 import { Loader2 } from "lucide-react";
 import {
@@ -16,13 +17,16 @@ import {
     filterSaleOrders,
     getSortedGroups,
     getSortedRegions,
+    getSortedProducts,
     extractGroup,
     extractRegion,
+    extractProduct,
     filterByDateRange,
 } from "@/lib/salesAggregations";
 
 const ALL_GROUPS = "Todas";
 const ALL_REGIONS = "Todas";
+const ALL_PRODUCTS = "Todas mercadorias";
 
 export default function Home() {
     const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
@@ -34,8 +38,8 @@ export default function Home() {
     const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUPS);
     const [selectedRegion, setSelectedRegion] = useState<string>(ALL_REGIONS);
     // Filtro de mercadoria específico do gráfico de evolução do faturamento —
-    // mesma correção: agora usa extractGroup em vez de extractFamily.
-    const [chartGroup, setChartGroup] = useState<string>(ALL_GROUPS);
+    // filtra por PRODUTO INDIVIDUAL (mercadoria), não por grupo.
+    const [chartProduct, setChartProduct] = useState<string>(ALL_PRODUCTS);
     const { records, isLoading, refresh } = useSalesData();
 
     const handleDateChange = useCallback((from: string, to: string) => {
@@ -82,12 +86,32 @@ export default function Home() {
         return filteredRecords.reduce((acc, item) => acc + (item.bundleQuantity || item.quantity || 0), 0);
     }, [filteredRecords]);
 
-    const chartRecords = useMemo(() => {
-        if (chartGroup === ALL_GROUPS) return filteredRecords;
-        return filteredRecords.filter(
-            (record) => extractGroup(record).toLowerCase() === chartGroup.toLowerCase()
+    // Opções de mercadoria (produto individual) para o filtro do gráfico
+    // de evolução do faturamento.
+    const productOptions = useMemo(() => getSortedProducts(filteredRecords), [filteredRecords]);
+
+    // Se a mercadoria selecionada não existir mais nas opções atuais
+    // (ex: usuário trocou o filtro de Grupo/Região/Data), volta pra
+    // "Todas mercadorias" em vez de manter um filtro que não bate com
+    // nada e deixar o gráfico vazio silenciosamente.
+    const effectiveChartProduct = useMemo(() => {
+        if (chartProduct === ALL_PRODUCTS) return ALL_PRODUCTS;
+        const stillExists = productOptions.some(
+            (p) => p.trim().toLowerCase() === chartProduct.trim().toLowerCase()
         );
-    }, [filteredRecords, chartGroup]);
+        return stillExists ? chartProduct : ALL_PRODUCTS;
+    }, [chartProduct, productOptions]);
+
+    const chartRecords = useMemo(() => {
+        if (effectiveChartProduct === ALL_PRODUCTS) return filteredRecords;
+        // IMPORTANTE: extractProduct(record) precisa ser "trimado" antes de
+        // comparar, porque a lista de opções (getSortedProducts) já vem
+        // trimada — sem isso, nomes de produto com espaço sobrando no fim
+        // (comum vindo da planilha) nunca batiam com a opção escolhida e o
+        // gráfico ficava sempre vazio ao filtrar por mercadoria.
+        const target = effectiveChartProduct.trim().toLowerCase();
+        return filteredRecords.filter((record) => extractProduct(record).trim().toLowerCase() === target);
+    }, [filteredRecords, effectiveChartProduct]);
 
     const dailyTotalsForChart = useMemo(
         () => buildDailyTotals(chartRecords, dateRange.from || undefined, dateRange.to || undefined),
@@ -196,20 +220,16 @@ export default function Home() {
 
                     <div>
                         <div className="flex flex-wrap items-end justify-end gap-3">
-                            <div>
+                            <div className="w-full sm:w-auto">
                                 <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">
-                                    Grupo
+                                    Mercadoria
                                 </label>
-                                <select
-                                    value={chartGroup}
-                                    onChange={(e) => setChartGroup(e.target.value)}
-                                    className="h-10 w-full max-w-[240px] rounded-lg border border-gray-200 bg-white px-3 text-sm text-[#2d2d2d] outline-none focus:border-[#2d2d2d]"
-                                >
-                                    <option value={ALL_GROUPS}>Todas mercadorias</option>
-                                    {groupOptions.map((g) => (
-                                        <option key={g} value={g}>{g}</option>
-                                    ))}
-                                </select>
+                                <MercadoriaFilterModal
+                                    value={effectiveChartProduct}
+                                    allLabel={ALL_PRODUCTS}
+                                    options={productOptions}
+                                    onChange={setChartProduct}
+                                />
                             </div>
                         </div>
                         <DailySalesChart title="Evolução do Faturamento Líquido" data={dailyTotalsForChart} />
