@@ -1,3 +1,4 @@
+// src/lib/groupCommissionAggregations.ts
 import { SalesRecord } from "@/context/salesDataContext";
 import { isSaleOrder } from "@/lib/orgAggregations";
 
@@ -7,6 +8,30 @@ import { isSaleOrder } from "@/lib/orgAggregations";
 export const DEFAULT_GROUP_PERCENTS: Record<string, number> = {
   GRUPO1: 3,
   GRUPO2: 2,
+};
+
+// Vendedoras do Gerente 10 (equipe feminina): recebem um percentual FLAT
+// sobre o faturamento líquido total, em vez do cálculo por GRUPO1/GRUPO2.
+// Estes são os valores padrão — podem ser sobrescritos por vendedor na
+// tabela seller_flat_commission_percents via tela de Comissões.
+export const DEFAULT_FLAT_SELLER_PERCENTS: Record<string, number> = {
+  "1009": 0.5285,
+  "1010": 0.5285,
+  "1004": 0.5285,
+  "1007": 0.5285,
+  "1008": 0.5285,
+};
+
+// Percentual que o Gerente 10 ganha sobre CADA uma dessas vendedoras
+// específicas (calculado sobre o faturamento líquido da vendedora), em vez
+// do padrão de 1/4 (25%) da comissão dela. Também sobrescrevível por
+// vendedor na tabela manager_seller_commission_percents.
+export const DEFAULT_MANAGER_SELLER_PERCENTS: Record<string, number> = {
+  "1009": 1.75,
+  "1010": 1.75,
+  "1004": 1.75,
+  "1007": 1.75,
+  "1008": 1.75,
 };
 
 function normalizeGroupKey(group: string | undefined | null): string {
@@ -54,6 +79,75 @@ export function resolveGroupPercent(
   return DEFAULT_GROUP_PERCENTS[normalizedGroup] ?? 0;
 }
 
+// ---- Percentual FLAT por vendedor (sobre faturamento líquido) ----
+
+export interface SellerFlatPercentInput {
+  sellerCode: string;
+  percent: number;
+}
+
+// Mapa sellerCode -> percent (carregado de seller_flat_commission_percents).
+export type FlatPercentOverrides = Map<string, number>;
+
+export function buildFlatPercentOverridesMap(rows: SellerFlatPercentInput[]): FlatPercentOverrides {
+  const map: FlatPercentOverrides = new Map();
+  for (const row of rows) {
+    const sellerCode = (row.sellerCode || "").trim();
+    if (!sellerCode) continue;
+    map.set(sellerCode, Number(row.percent) || 0);
+  }
+  return map;
+}
+
+// Retorna o percentual flat efetivo para o vendedor (customizado, senão o
+// padrão hardcoded para as 5 vendedoras do Gerente 10), ou null se este
+// vendedor usa o cálculo normal por GRUPO1/GRUPO2.
+export function resolveFlatSellerPercent(
+  sellerCode: string,
+  overrides: FlatPercentOverrides
+): number | null {
+  const custom = overrides.get(sellerCode);
+  if (custom !== undefined) return custom;
+  const fallback = DEFAULT_FLAT_SELLER_PERCENTS[sellerCode];
+  return fallback !== undefined ? fallback : null;
+}
+
+// ---- Percentual do GERENTE por vendedor (sobre faturamento líquido) ----
+
+export interface ManagerSellerPercentInput {
+  sellerCode: string;
+  percent: number;
+}
+
+// Mapa sellerCode -> percent (carregado de manager_seller_commission_percents).
+export type ManagerSellerPercentOverrides = Map<string, number>;
+
+export function buildManagerSellerPercentOverridesMap(
+  rows: ManagerSellerPercentInput[]
+): ManagerSellerPercentOverrides {
+  const map: ManagerSellerPercentOverrides = new Map();
+  for (const row of rows) {
+    const sellerCode = (row.sellerCode || "").trim();
+    if (!sellerCode) continue;
+    map.set(sellerCode, Number(row.percent) || 0);
+  }
+  return map;
+}
+
+// Retorna o percentual que o gerente ganha SOBRE O FATURAMENTO LÍQUIDO
+// deste vendedor específico (customizado, senão o padrão hardcoded pras 5
+// vendedoras do Gerente 10), ou null se este vendedor usa a regra padrão
+// (gerente recebe 1/4 da comissão do vendedor).
+export function resolveManagerSellerPercent(
+  sellerCode: string,
+  overrides: ManagerSellerPercentOverrides
+): number | null {
+  const custom = overrides.get(sellerCode);
+  if (custom !== undefined) return custom;
+  const fallback = DEFAULT_MANAGER_SELLER_PERCENTS[sellerCode];
+  return fallback !== undefined ? fallback : null;
+}
+
 export interface GroupBreakdown {
   group: string;
   netRevenue: number;
@@ -71,6 +165,22 @@ export interface SellerGroupCommissionAggregate {
   commission: number;
   premium: number;
   orders: number;
+  // Se não-nulo, a comissão deste vendedor foi calculada como
+  // netRevenue * flatPercent / 100 (regra flat), ignorando groupBreakdown
+  // para fins de valor final — usado pelas vendedoras do Gerente 10.
+  flatPercent: number | null;
+}
+
+export interface ManagerSellerContribution {
+  sellerCode: string;
+  sellerName: string;
+  netRevenue: number;
+  sellerCommission: number;
+  // Percentual efetivo aplicado sobre o faturamento líquido do vendedor
+  // para chegar na contribuição dele na comissão do gerente.
+  percent: number;
+  isCustomPercent: boolean;
+  contribution: number;
 }
 
 export interface ManagerGroupCommissionAggregate {
@@ -78,9 +188,10 @@ export interface ManagerGroupCommissionAggregate {
   managerName: string;
   netRevenue: number;
   sellersCommissionTotal: number;
-  commission: number; // 25% (um quarto) do total que os vendedores dele recebem
+  commission: number; // soma das contribuições por vendedor (custom ou 1/4 padrão)
   sellersCount: number;
   orders: number;
+  sellerContributions: ManagerSellerContribution[];
 }
 
 export interface GroupCommissionTotals {
@@ -98,7 +209,10 @@ export interface GroupCommissionAggregates {
   groupsFound: string[];
 }
 
-// Gerente recebe 1/4 (25%) do que os vendedores dele recebem.
+// Gerente recebe 1/4 (25%) do que os vendedores dele recebem, EXCETO
+// quando há um percentual customizado por vendedor (ver
+// resolveManagerSellerPercent) — nesse caso o gerente recebe
+// netRevenue_do_vendedor * percent / 100 daquele vendedor específico.
 const MANAGER_SHARE_OF_SELLERS = 0.25;
 
 interface SellerDraft {
@@ -110,13 +224,25 @@ interface SellerDraft {
   groupRevenue: Map<string, number>;
 }
 
+interface ManagerDraft {
+  managerName: string;
+  netRevenue: number;
+  sellersCommissionTotal: number;
+  managerCommission: number;
+  sellerCodes: Set<string>;
+  orders: Set<string>;
+  sellerContributions: ManagerSellerContribution[];
+}
+
 // IMPORTANTE: assim como a tela de Comissão já fazia antes, somamos
 // TODAS as linhas (vendas, devoluções, bonificações), sem filtrar por
 // tipo de pedido — devoluções chegam com VLR_LIQUIDO negativo e por
 // isso já se descontam sozinhas do faturamento líquido por grupo.
 export function buildGroupCommissionAggregates(
   records: SalesRecord[],
-  overrides: GroupPercentOverrides
+  overrides: GroupPercentOverrides,
+  flatOverrides: FlatPercentOverrides = new Map(),
+  managerSellerOverrides: ManagerSellerPercentOverrides = new Map()
 ): GroupCommissionAggregates {
   const sellers = new Map<string, SellerDraft>();
   const groupsFound = new Set<string>();
@@ -168,7 +294,14 @@ export function buildGroupCommissionAggregates(
         .sort((a, b) => a.group.localeCompare(b.group));
 
       const netRevenue = groupBreakdown.reduce((sum, g) => sum + g.netRevenue, 0);
-      const commission = groupBreakdown.reduce((sum, g) => sum + g.commission, 0);
+
+      // Regra FLAT (vendedoras do Gerente 10 e outros configurados):
+      // ignora o breakdown por grupo e usa netRevenue * flatPercent / 100.
+      const flatPercent = resolveFlatSellerPercent(sellerCode, flatOverrides);
+      const commission =
+        flatPercent !== null
+          ? (netRevenue * flatPercent) / 100
+          : groupBreakdown.reduce((sum, g) => sum + g.commission, 0);
 
       return {
         sellerCode,
@@ -180,6 +313,7 @@ export function buildGroupCommissionAggregates(
         commission,
         premium: s.premium,
         orders: s.orders.size,
+        flatPercent,
       };
     }
   );
@@ -187,18 +321,11 @@ export function buildGroupCommissionAggregates(
   sellerAggs.sort((a, b) => b.commission - a.commission);
 
   // Agrupa por gerente (ID_SUPERVISOR, com fallback pelo nome quando a
-  // linha não tem supervisor_id) e soma a comissão FINAL de cada
-  // vendedor vinculado, pra depois aplicar o 1/4.
-  const managerDrafts = new Map< // <--- O ERRO ESTAVA AQUI, FALTAVA O "<"
-    string,
-    {
-      managerName: string;
-      netRevenue: number;
-      sellersCommissionTotal: number;
-      sellerCodes: Set<string>;
-      orders: Set<string>;
-    }
-  >();
+  // linha não tem supervisor_id) e calcula, PARA CADA VENDEDOR, quanto
+  // ele contribui na comissão do gerente — usando o percentual customizado
+  // (sobre o faturamento líquido do vendedor) quando existir, senão o
+  // padrão de 1/4 da comissão do vendedor.
+  const managerDrafts = new Map<string, ManagerDraft>();
 
   for (const s of sellerAggs) {
     const key = s.supervisorId || `NOME:${s.managerName}`;
@@ -208,8 +335,10 @@ export function buildGroupCommissionAggregates(
         managerName: s.managerName,
         netRevenue: 0,
         sellersCommissionTotal: 0,
+        managerCommission: 0,
         sellerCodes: new Set<string>(),
         orders: new Set<string>(),
+        sellerContributions: [],
       };
       managerDrafts.set(key, m);
     }
@@ -217,6 +346,31 @@ export function buildGroupCommissionAggregates(
     m.netRevenue += s.netRevenue;
     m.sellersCommissionTotal += s.commission;
     m.sellerCodes.add(s.sellerCode);
+
+    const customPercent = resolveManagerSellerPercent(s.sellerCode, managerSellerOverrides);
+
+    let contribution: number;
+    let percentForDisplay: number;
+    const isCustomPercent = customPercent !== null;
+
+    if (customPercent !== null) {
+      contribution = (s.netRevenue * customPercent) / 100;
+      percentForDisplay = customPercent;
+    } else {
+      contribution = s.commission * MANAGER_SHARE_OF_SELLERS;
+      percentForDisplay = s.netRevenue !== 0 ? (contribution / s.netRevenue) * 100 : 0;
+    }
+
+    m.managerCommission += contribution;
+    m.sellerContributions.push({
+      sellerCode: s.sellerCode,
+      sellerName: s.sellerName,
+      netRevenue: s.netRevenue,
+      sellerCommission: s.commission,
+      percent: percentForDisplay,
+      isCustomPercent,
+      contribution,
+    });
   }
 
   const allOrders = new Set<string>();
@@ -236,9 +390,10 @@ export function buildGroupCommissionAggregates(
       managerName: m.managerName,
       netRevenue: m.netRevenue,
       sellersCommissionTotal: m.sellersCommissionTotal,
-      commission: m.sellersCommissionTotal * MANAGER_SHARE_OF_SELLERS,
+      commission: m.managerCommission,
       sellersCount: m.sellerCodes.size,
       orders: m.orders.size,
+      sellerContributions: m.sellerContributions.sort((a, b) => b.contribution - a.contribution),
     }))
     .sort((a, b) => b.commission - a.commission);
 

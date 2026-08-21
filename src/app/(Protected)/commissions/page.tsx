@@ -1,3 +1,4 @@
+// src/app/(Protected)/commissions/page.tsx
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
@@ -8,14 +9,18 @@ import DateRangeFilter from "@/components/dateRangeFilter";
 import CommissionTable, { CommissionRow } from "@/components/commissionTable";
 import EditCommissionModal from "@/components/editCommissionModal";
 import EditGroupPercentModal from "@/components/editGroupPercentModal";
+import EditManagerSellerPercentModal from "@/components/editManagerSellerPercentModal";
 import { useSalesData } from "@/context/salesDataContext";
 import { useAuth } from "@/context/AuthContext";
 import {
     buildGroupCommissionAggregates,
     buildGroupPercentOverridesMap,
+    buildFlatPercentOverridesMap,
+    buildManagerSellerPercentOverridesMap,
     resolveGroupPercent,
     DEFAULT_GROUP_PERCENTS,
     SellerGroupCommissionAggregate,
+    ManagerGroupCommissionAggregate,
 } from "@/lib/groupCommissionAggregations";
 import { filterByDateRange } from "@/lib/salesAggregations";
 import {
@@ -28,6 +33,11 @@ import {
     fetchSellerGroupPercents,
     SellerGroupPercentRow,
 } from "@/services/groupCommissionSettingsService";
+import { fetchSellerFlatPercents, SellerFlatPercentRow } from "@/services/sellerFlatCommissionService";
+import {
+    fetchManagerSellerPercents,
+    ManagerSellerPercentRow,
+} from "@/services/managerSellerCommissionService";
 import { fetchManualDiscounts, ManualDiscount } from "@/services/discountService";
 
 const currencyFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -54,6 +64,18 @@ export default function CommissionsPage() {
     const [groupPercents, setGroupPercents] = useState<SellerGroupPercentRow[]>([]);
     const [isLoadingGroupPercents, setIsLoadingGroupPercents] = useState(false);
     const [editingGroupSeller, setEditingGroupSeller] = useState<SellerGroupCommissionAggregate | null>(null);
+
+    // % flat por vendedor (sobre faturamento líquido) — usado pelas
+    // vendedoras do Gerente 10 (padrão 0,5285%), sobrescrevível por vendedor.
+    const [flatPercents, setFlatPercents] = useState<SellerFlatPercentRow[]>([]);
+    const [isLoadingFlatPercents, setIsLoadingFlatPercents] = useState(false);
+
+    // % que o gerente ganha por vendedor específico (sobre faturamento
+    // líquido do vendedor) — usado pelo Gerente 10 (padrão 1,75%),
+    // sobrescrevível por vendedor. Editável na tela via o novo modal.
+    const [managerSellerPercents, setManagerSellerPercents] = useState<ManagerSellerPercentRow[]>([]);
+    const [isLoadingManagerSellerPercents, setIsLoadingManagerSellerPercents] = useState(false);
+    const [editingManagerSellerRow, setEditingManagerSellerRow] = useState<ManagerGroupCommissionAggregate | null>(null);
 
     // Descontos manuais lançados na tela de Devoluções/Descontos
     // (tabela seller_discounts). As devoluções automáticas (linhas
@@ -85,6 +107,26 @@ export default function CommissionsPage() {
         }
     }, []);
 
+    const loadFlatPercents = useCallback(async () => {
+        setIsLoadingFlatPercents(true);
+        try {
+            const data = await fetchSellerFlatPercents();
+            setFlatPercents(data);
+        } finally {
+            setIsLoadingFlatPercents(false);
+        }
+    }, []);
+
+    const loadManagerSellerPercents = useCallback(async () => {
+        setIsLoadingManagerSellerPercents(true);
+        try {
+            const data = await fetchManagerSellerPercents();
+            setManagerSellerPercents(data);
+        } finally {
+            setIsLoadingManagerSellerPercents(false);
+        }
+    }, []);
+
     const loadManualDiscounts = useCallback(async () => {
         setIsLoadingManualDiscounts(true);
         try {
@@ -102,6 +144,14 @@ export default function CommissionsPage() {
     useEffect(() => {
         loadGroupPercents();
     }, [loadGroupPercents]);
+
+    useEffect(() => {
+        loadFlatPercents();
+    }, [loadFlatPercents]);
+
+    useEffect(() => {
+        loadManagerSellerPercents();
+    }, [loadManagerSellerPercents]);
 
     useEffect(() => {
         loadManualDiscounts();
@@ -132,14 +182,30 @@ export default function CommissionsPage() {
         [groupPercents]
     );
 
+    const flatPercentOverridesMap = useMemo(
+        () => buildFlatPercentOverridesMap(flatPercents),
+        [flatPercents]
+    );
+
+    const managerSellerPercentOverridesMap = useMemo(
+        () => buildManagerSellerPercentOverridesMap(managerSellerPercents),
+        [managerSellerPercents]
+    );
+
     const {
         sellers,
         managers,
         totals: baseTotals,
         groupsFound,
     } = useMemo(
-        () => buildGroupCommissionAggregates(recordsInRange, groupPercentOverridesMap),
-        [recordsInRange, groupPercentOverridesMap]
+        () =>
+            buildGroupCommissionAggregates(
+                recordsInRange,
+                groupPercentOverridesMap,
+                flatPercentOverridesMap,
+                managerSellerPercentOverridesMap
+            ),
+        [recordsInRange, groupPercentOverridesMap, flatPercentOverridesMap, managerSellerPercentOverridesMap]
     );
 
     const findOverride = useCallback(
@@ -187,8 +253,8 @@ export default function CommissionsPage() {
                     (ov?.overrideCommission != null && s.netRevenue !== 0
                         ? (ov.overrideCommission / s.netRevenue) * 100
                         : s.netRevenue !== 0
-                        ? (baseCommission / s.netRevenue) * 100
-                        : 0);
+                            ? (baseCommission / s.netRevenue) * 100
+                            : 0);
 
                 // Desconto manual (tela de Devoluções/Descontos) abatido
                 // do valor final pago ao vendedor.
@@ -226,13 +292,13 @@ export default function CommissionsPage() {
                     (ov?.overrideCommission != null && m.netRevenue !== 0
                         ? (ov.overrideCommission / m.netRevenue) * 100
                         : m.netRevenue !== 0
-                        ? (m.commission / m.netRevenue) * 100
-                        : 0);
+                            ? (m.commission / m.netRevenue) * 100
+                            : 0);
 
                 return {
                     code,
                     name: m.managerName,
-                    subtitle: `${m.sellersCount} vendedor(es) · 1/4 da comissão deles`,
+                    subtitle: `${m.sellersCount} vendedor(es)`,
                     netRevenue: m.netRevenue,
                     commission,
                     effectivePercent,
@@ -309,11 +375,43 @@ export default function CommissionsPage() {
         return result;
     }, [editingGroupSeller, groupsFound, groupPercentOverridesMap]);
 
-    const handleRefreshAll = async () => {
-        await Promise.all([refresh(), loadOverrides(), loadGroupPercents(), loadManualDiscounts()]);
+    // Abre o modal de % por vendedor (visão do gerente): define quanto o
+    // gerente ganha sobre cada vendedor dele, e o % flat de cada vendedor.
+    const openEditManagerSellerPercent = (row: CommissionRow) => {
+        const managerAgg = managers.find(
+            (m) => (m.supervisorId || `NOME:${m.managerName}`) === row.code
+        );
+        if (!managerAgg) return;
+        setEditingManagerSellerRow(managerAgg);
     };
 
-    const isPageLoading = isLoading || isLoadingOverrides || isLoadingGroupPercents || isLoadingManualDiscounts;
+    const currentFlatPercentsForEditingManager = useMemo(() => {
+        if (!editingManagerSellerRow) return {};
+        const result: Record<string, number | undefined> = {};
+        editingManagerSellerRow.sellerContributions.forEach((s) => {
+            result[s.sellerCode] = flatPercentOverridesMap.get(s.sellerCode);
+        });
+        return result;
+    }, [editingManagerSellerRow, flatPercentOverridesMap]);
+
+    const handleRefreshAll = async () => {
+        await Promise.all([
+            refresh(),
+            loadOverrides(),
+            loadGroupPercents(),
+            loadFlatPercents(),
+            loadManagerSellerPercents(),
+            loadManualDiscounts(),
+        ]);
+    };
+
+    const isPageLoading =
+        isLoading ||
+        isLoadingOverrides ||
+        isLoadingGroupPercents ||
+        isLoadingFlatPercents ||
+        isLoadingManagerSellerPercents ||
+        isLoadingManualDiscounts;
 
     return (
         <div className="relative pb-12">
@@ -347,7 +445,9 @@ export default function CommissionsPage() {
                 <strong className="text-gray-700">2% sobre o GRUPO2</strong> (devoluções já descontadas do
                 faturamento líquido). Gerente recebe <strong className="text-gray-700">1/4 do total</strong>{" "}
                 que os vendedores dele recebem. Use o ícone <Percent className="inline h-3 w-3" /> na
-                linha do vendedor pra combinar um percentual diferente por grupo. Descontos lançados
+                linha do vendedor pra combinar um percentual diferente por grupo, e o ícone de pessoas na
+                linha do gerente pra definir um % customizado por vendedor (ex: equipe do Gerente 10, que
+                recebe 0,5285% flat e cujo gerente recebe 1,75% sobre cada uma). Descontos lançados
                 manualmente na tela de <strong className="text-gray-700">Descontos</strong> também são
                 abatidos automaticamente do valor final aqui.
             </div>
@@ -355,7 +455,7 @@ export default function CommissionsPage() {
             <div className="mt-6 flex flex-wrap gap-4 sm:gap-6">
                 <StatCard label="Faturamento Líquido" value={currencyFmt(totals.netRevenue)} />
                 <StatCard label="Comissão Vendedores" value={currencyFmt(totals.representativeCommission)} />
-                <StatCard label="Comissão Gerentes (1/4)" value={currencyFmt(totals.managerCommission)} />
+                <StatCard label="Comissão Gerentes" value={currencyFmt(totals.managerCommission)} />
                 <StatCard label="Descontos manuais abatidos" value={currencyFmt(totals.manualDiscountsTotal)} />
                 <StatCard label="Prêmios Pagos" value={currencyFmt(totals.premium)} />
                 <StatCard label="Pedidos" value={totals.orders.toLocaleString("pt-BR")} />
@@ -414,6 +514,7 @@ export default function CommissionsPage() {
                     searchPlaceholder="Buscar por gerente ou ID supervisor..."
                     emptyLabel="Nenhum gerente encontrado para os filtros selecionados."
                     onEdit={(row) => openEdit(row, "manager")}
+                    onEditManagerSellerPercent={openEditManagerSellerPercent}
                 />
             )}
 
@@ -433,6 +534,18 @@ export default function CommissionsPage() {
                 groups={groupsFound}
                 currentPercents={currentGroupPercentsForEditingSeller}
                 onSaved={loadGroupPercents}
+            />
+
+            <EditManagerSellerPercentModal
+                open={editingManagerSellerRow !== null}
+                onClose={() => setEditingManagerSellerRow(null)}
+                supervisorId={editingManagerSellerRow?.supervisorId || ""}
+                managerName={editingManagerSellerRow?.managerName || ""}
+                sellerContributions={editingManagerSellerRow?.sellerContributions || []}
+                currentFlatPercents={currentFlatPercentsForEditingManager}
+                onSaved={async () => {
+                    await Promise.all([loadManagerSellerPercents(), loadFlatPercents()]);
+                }}
             />
         </div>
     );

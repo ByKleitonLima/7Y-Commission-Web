@@ -1,7 +1,8 @@
+// src/components/commissionTable.tsx
 "use client";
 
 import { useMemo, useState, ChangeEvent } from "react";
-import { ChevronUp, ChevronDown, Search, Pencil, Percent } from "lucide-react";
+import { ChevronUp, ChevronDown, Search, Pencil, Percent, Users2 } from "lucide-react";
 
 export interface CommissionRow {
     code: string;
@@ -34,6 +35,9 @@ interface CommissionTableProps {
     // Só usado na aba de Vendedores: abre o modal de % por grupo
     // (GRUPO1/GRUPO2) daquele vendedor específico.
     onEditGroupPercent?: (row: CommissionRow) => void;
+    // Só usado na aba de Gerentes: abre o modal de % por vendedor
+    // (quanto o gerente ganha sobre cada vendedor dele).
+    onEditManagerSellerPercent?: (row: CommissionRow) => void;
 }
 
 const currencyFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -50,6 +54,7 @@ export default function CommissionTable({
     emptyLabel,
     onEdit,
     onEditGroupPercent,
+    onEditManagerSellerPercent,
 }: CommissionTableProps) {
     const [search, setSearch] = useState("");
     const [sortKey, setSortKey] = useState<SortKey>("commission");
@@ -78,7 +83,7 @@ export default function CommissionTable({
         });
     }, [rows, search, sortKey, sortDir]);
 
-    const hasActionsColumn = Boolean(onEdit || onEditGroupPercent);
+    const hasActionsColumn = Boolean(onEdit || onEditGroupPercent || onEditManagerSellerPercent);
 
     const SortHeader = ({ label, sortField }: { label: string; sortField: SortKey }) => (
         <th className="px-4 py-3 font-medium">
@@ -163,6 +168,15 @@ export default function CommissionTable({
                                                     title="Definir % de comissão por grupo (GRUPO1/GRUPO2)"
                                                 >
                                                     <Percent className="h-4 w-4" strokeWidth={1.75} />
+                                                </button>
+                                            )}
+                                            {onEditManagerSellerPercent && (
+                                                <button
+                                                    onClick={() => onEditManagerSellerPercent(r)}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50"
+                                                    title="Definir % do gerente por vendedor"
+                                                >
+                                                    <Users2 className="h-4 w-4" strokeWidth={1.75} />
                                                 </button>
                                             )}
                                             {onEdit && (
