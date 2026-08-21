@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Product } from "@/components/productsTable";
+import { logAudit } from "@/services/auditLogService";
 
 const TABLE = "products";
 
@@ -34,11 +35,6 @@ export async function fetchProducts(): Promise<Product[]> {
         image_url: p.image_url,
         dock: p.dock || null,
         color: p.color || null,
-        // "level" não é uma coluna da tabela "products" — o nível de cada
-        // tamanho/pallet fica guardado dentro do JSON "sizes" (ver
-        // ProductSize.level). Mantemos aqui só como fallback de leitura
-        // caso algum dia a coluna venha a existir; não deve ser enviado
-        // de volta ao Supabase nas escritas (ver createProduct/updateProduct).
         level: p.level ?? null,
     }));
 }
@@ -54,10 +50,6 @@ export async function createProduct(productData: Omit<Product, "id">) {
                 promo_price_100: productData.promoPrice100 ?? null,
                 bundle_quantity: productData.bundleQuantity || null,
                 category: productData.category || null,
-                // O nível de cada tamanho/doca já vai embutido em cada
-                // item de "sizes" (ProductSize.level). NÃO enviar "level"
-                // solto aqui: a tabela "products" não tem essa coluna e o
-                // Supabase rejeita a escrita com PGRST204.
                 sizes: productData.sizes || [],
                 status: productData.status,
                 supplier_code: productData.supplier_code,
@@ -70,6 +62,17 @@ export async function createProduct(productData: Omit<Product, "id">) {
         .select();
 
     if (error) throw error;
+
+    const created = data?.[0];
+    await logAudit({
+        action: "create",
+        entityType: "product",
+        entityId: created?.id,
+        entityLabel: productData.name,
+        description: `Produto "${productData.name}" criado (código ${productData.product_code || "-"}).`,
+        changes: { after: productData },
+    });
+
     return data;
 }
 
@@ -83,8 +86,6 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
             promo_price_100: productData.promoPrice100 ?? null,
             bundle_quantity: productData.bundleQuantity || null,
             category: productData.category || null,
-            // Mesma observação do createProduct: o nível vive dentro de
-            // "sizes", não como coluna própria.
             sizes: productData.sizes || [],
             status: productData.status,
             supplier_code: productData.supplier_code,
@@ -97,10 +98,27 @@ export async function updateProduct(id: string, productData: Omit<Product, "id">
         .select();
 
     if (error) throw error;
+
+    await logAudit({
+        action: "update",
+        entityType: "product",
+        entityId: id,
+        entityLabel: productData.name,
+        description: `Produto "${productData.name}" atualizado.`,
+        changes: { after: productData },
+    });
+
     return data;
 }
 
 export async function deleteProduct(id: string) {
     const { error } = await supabase.from(TABLE).delete().eq("id", id);
     if (error) throw error;
+
+    await logAudit({
+        action: "delete",
+        entityType: "product",
+        entityId: id,
+        description: `Produto removido (id ${id}).`,
+    });
 }

@@ -5,6 +5,7 @@ import { SalesManager } from "@/components/managerStable";
 import { Seller } from "@/components/sellersStable";
 import { Client } from "@/components/clientsStable";
 import { buildOrganizationFromRecords } from "@/lib/orgAggregations";
+import { logAudit } from "@/services/auditLogService";
 
 const TABLE = "sales_records";
 const HISTORY_TABLE = "upload_history";
@@ -13,11 +14,6 @@ const SELLERS_TABLE = "sellers";
 const CLIENTS_TABLE = "clients";
 const SUPPLIER_PHOTOS_TABLE = "supplier_photos";
 
-// Tamanho de página usado na paginação. O Supabase/PostgREST limita a resposta
-// de um único .select() a 1000 linhas por padrão (max-rows). Sem paginação e
-// sem uma ordenação estável, consultas repetidas podem retornar subconjuntos
-// diferentes das linhas quando a tabela tem mais de 1000 registros — foi essa
-// a causa dos valores mudarem sozinhos a cada atualização da página.
 const PAGE_SIZE = 1000;
 
 function toDbRecord(record: SalesRecord, uploadId?: string) {
@@ -31,18 +27,10 @@ function toDbRecord(record: SalesRecord, uploadId?: string) {
     client_code: record.clientCode,
     client_name: record.clientName,
     issue_date: record.issueDate || new Date().toLocaleDateString("pt-BR"),
-    // unique_number guarda o número do PEDIDO (NR_ÚNICO da planilha), como
-    // sempre guardou — precisa ficar intacto porque orgAggregations.ts e
-    // salesAggregations.ts usam esse campo pra contar PEDIDOS distintos.
-    // A deduplicação por LINHA (pedido + produto) é feita no onConflict do
-    // upsert em uploadSalesRecordsInBatches, não aqui.
     unique_number:
       record.uniqueNumber && record.uniqueNumber.trim() !== ""
         ? record.uniqueNumber
         : `${record.productCode}-${record.issueDate}-${record.totalValue}`,
-    // Vincula a linha à importação que a originou. É essa coluna que
-    // permite excluir todo um envio de uma vez (ver deleteUploadHistoryEntry
-    // e a rota /api/uploads/[id]).
     upload_id: uploadId ?? null,
     order_ref: record.orderRef ?? null,
     supplier: record.supplier,
@@ -153,18 +141,6 @@ function fromDbRecord(row: any): SalesRecord {
   };
 }
 
-// Envia os registros em blocos, fazendo UPSERT pela combinação
-// (unique_number, product_code) e marcando cada linha com o uploadId do
-// histórico correspondente (permite excluir tudo depois).
-//
-// IMPORTANTE: unique_number é o número do PEDIDO — um mesmo pedido tem
-// várias linhas (uma por produto), todas com o mesmo unique_number. Fazer
-// upsert só por unique_number faz cada linha nova de um pedido sobrescrever
-// a anterior, perdendo quase todos os produtos daquele pedido. Por isso o
-// conflito é resolvido pelo par (unique_number, product_code).
-//
-// Exige a constraint UNIQUE (unique_number, product_code) e a coluna
-// upload_id em sales_records — ver migration.sql.
 export async function uploadSalesRecordsInBatches(
   records: SalesRecord[],
   uploadId: string,
@@ -189,9 +165,6 @@ export async function uploadSalesRecordsInBatches(
   }
 }
 
-// Busca TODOS os registros de vendas, paginando em blocos de PAGE_SIZE e
-// ordenando por "id" para garantir que cada página traga sempre o mesmo
-// conjunto de linhas, na mesma ordem, em qualquer atualização.
 export async function fetchAllSalesRecords(): Promise<SalesRecord[]> {
   const all: any[] = [];
   let page = 0;
@@ -222,8 +195,6 @@ export async function fetchAllSalesRecords(): Promise<SalesRecord[]> {
   return all.map(fromDbRecord);
 }
 
-// Mantida por compatibilidade com outras telas que ainda filtrem por mês no
-// próprio banco. O Dashboard não usa mais esta função.
 export async function fetchSalesByMonth(month: string): Promise<SalesRecord[]> {
   const [year, monthNumber] = month.split("-");
   const suffix = `%/${monthNumber}/${year}`;
@@ -258,8 +229,6 @@ export async function fetchSalesByMonth(month: string): Promise<SalesRecord[]> {
   return all.map(fromDbRecord);
 }
 
-// Agora retorna o registro criado (precisamos do "id" para marcar as
-// sales_records dessa importação com o upload_id correspondente).
 export async function saveUploadHistory(historyData: {
   fileName: string;
   rowCount: number;
@@ -287,6 +256,21 @@ export async function saveUploadHistory(historyData: {
       );
       return null;
     }
+
+    // Log de auditoria: registra a importação assim que o histórico é
+    // criado (antes mesmo das linhas serem gravadas), pois é este o
+    // evento "a planilha X foi enviada por Y".
+    await logAudit({
+      action: "upload",
+      entityType: "sales_upload",
+      entityId: data.id,
+      entityLabel: historyData.fileName,
+      description: `Importação de comissão: ${historyData.rowCount} linha(s), total ${historyData.totalValue.toLocaleString(
+        "pt-BR",
+        { style: "currency", currency: "BRL" }
+      )}.`,
+      userName: historyData.uploadedBy,
+    });
 
     return { id: data.id };
   } catch (err) {
@@ -316,12 +300,17 @@ export async function fetchUploadHistory() {
   }));
 }
 
-// Exclui uma importação inteira: chama a rota /api/uploads/[id], que só
-// aceita a chamada se o usuário autenticado for Admin (checado no
-// servidor). Apagar o upload_history remove em cascata as sales_records
-// vinculadas (ver migration.sql, upload_id ON DELETE CASCADE).
 export async function deleteUploadHistoryEntry(id: string) {
-  return authFetch(`/api/uploads/${id}`, { method: "DELETE" });
+  const result = await authFetch(`/api/uploads/${id}`, { method: "DELETE" });
+
+  await logAudit({
+    action: "delete",
+    entityType: "sales_upload",
+    entityId: id,
+    description: `Importação de comissão (id ${id}) excluída, junto com as vendas vinculadas.`,
+  });
+
+  return result;
 }
 
 export async function syncOrganizationFromRecords(records: SalesRecord[]) {
@@ -490,6 +479,15 @@ export async function createManager(manager: {
     throw error;
   }
 
+  await logAudit({
+    action: "create",
+    entityType: "manager",
+    entityId: data.id,
+    entityLabel: data.name,
+    description: `Gerente "${data.name}" criado (código ${data.code || "-"}).`,
+    changes: { after: manager },
+  });
+
   return {
     id: data.id,
     supId: data.supervisor_id,
@@ -525,11 +523,31 @@ export async function updateManager(
     console.error("Erro ao atualizar gerente:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "update",
+    entityType: "manager",
+    entityId: id,
+    entityLabel: manager.name,
+    description: `Gerente "${manager.name}" atualizado.`,
+    changes: { after: manager },
+  });
 }
 
 export async function updateManagerStatus(id: string, status: "Ativo" | "Inativo") {
   const { error } = await supabase.from(MANAGERS_TABLE).update({ status }).eq("id", id);
-  if (error) console.error("Erro ao atualizar status do gerente:", error);
+  if (error) {
+    console.error("Erro ao atualizar status do gerente:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "update",
+    entityType: "manager",
+    entityId: id,
+    description: `Status do gerente alterado para "${status}".`,
+    changes: { after: { status } },
+  });
 }
 
 export async function createSeller(seller: {
@@ -562,6 +580,15 @@ export async function createSeller(seller: {
     console.error("Erro ao criar vendedor:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "create",
+    entityType: "seller",
+    entityId: data.id,
+    entityLabel: data.name,
+    description: `Vendedor "${data.name}" criado (código ${data.seller_code || "-"}).`,
+    changes: { after: seller },
+  });
 
   return {
     id: data.id,
@@ -601,11 +628,31 @@ export async function updateSeller(
     console.error("Erro ao atualizar vendedor:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "update",
+    entityType: "seller",
+    entityId: id,
+    entityLabel: seller.name,
+    description: `Vendedor "${seller.name}" atualizado.`,
+    changes: { after: seller },
+  });
 }
 
 export async function updateSellerStatus(id: string, status: "Ativo" | "Inativo") {
   const { error } = await supabase.from(SELLERS_TABLE).update({ status }).eq("id", id);
-  if (error) console.error("Erro ao atualizar status do vendedor:", error);
+  if (error) {
+    console.error("Erro ao atualizar status do vendedor:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "update",
+    entityType: "seller",
+    entityId: id,
+    description: `Status do vendedor alterado para "${status}".`,
+    changes: { after: { status } },
+  });
 }
 
 export async function createClient(client: {
@@ -636,6 +683,15 @@ export async function createClient(client: {
     console.error("Erro ao criar cliente:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "create",
+    entityType: "client",
+    entityId: data.id,
+    entityLabel: data.name,
+    description: `Cliente "${data.name}" criado (código ${data.client_code || "-"}).`,
+    changes: { after: client },
+  });
 
   return {
     id: data.id,
@@ -678,26 +734,76 @@ export async function updateClient(
     console.error("Erro ao atualizar cliente:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "update",
+    entityType: "client",
+    entityId: id,
+    entityLabel: client.name,
+    description: `Cliente "${client.name}" atualizado.`,
+    changes: { after: client },
+  });
 }
 
 export async function updateClientStatus(id: string, status: "Ativo" | "Inativo") {
   const { error } = await supabase.from(CLIENTS_TABLE).update({ status }).eq("id", id);
-  if (error) console.error("Erro ao atualizar status do cliente:", error);
+  if (error) {
+    console.error("Erro ao atualizar status do cliente:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "update",
+    entityType: "client",
+    entityId: id,
+    description: `Status do cliente alterado para "${status}".`,
+    changes: { after: { status } },
+  });
 }
 
 export async function deleteManager(id: string) {
   const { error } = await supabase.from(MANAGERS_TABLE).delete().eq("id", id);
-  if (error) console.error("Erro ao remover gerente:", error);
+  if (error) {
+    console.error("Erro ao remover gerente:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "delete",
+    entityType: "manager",
+    entityId: id,
+    description: `Gerente removido (id ${id}).`,
+  });
 }
 
 export async function deleteSeller(id: string) {
   const { error } = await supabase.from(SELLERS_TABLE).delete().eq("id", id);
-  if (error) console.error("Erro ao remover vendedor:", error);
+  if (error) {
+    console.error("Erro ao remover vendedor:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "delete",
+    entityType: "seller",
+    entityId: id,
+    description: `Vendedor removido (id ${id}).`,
+  });
 }
 
 export async function deleteClient(id: string) {
   const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", id);
-  if (error) console.error("Erro ao remover cliente:", error);
+  if (error) {
+    console.error("Erro ao remover cliente:", error);
+    return;
+  }
+
+  await logAudit({
+    action: "delete",
+    entityType: "client",
+    entityId: id,
+    description: `Cliente removido (id ${id}).`,
+  });
 }
 
 export async function fetchSupplierPhotos(): Promise<Record<string, string>> {
@@ -725,4 +831,12 @@ export async function upsertSupplierPhoto(supplierName: string, photoUrl: string
     console.error("Erro ao salvar foto do fornecedor:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "update",
+    entityType: "supplier",
+    entityId: supplierName,
+    entityLabel: supplierName,
+    description: `Foto do fornecedor "${supplierName}" atualizada.`,
+  });
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
     LayoutDashboard,
     UserCog,
@@ -18,6 +18,7 @@ import {
     Percent,
     Menu as MenuIcon,
     X,
+    ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
@@ -34,7 +35,12 @@ export const NAV_ITEMS = [
     { label: "Preços & Histórico", href: "/prices-history", icon: History, pageTitle: "Preços & Histórico de Estoque" },
     { label: "Mapa do Galpão", href: "/warehouse", icon: Warehouse, pageTitle: "Mapa do Galpão" },
     { label: "Importar", href: "/import", icon: Upload, pageTitle: "Importar planilha de comissão" },
+    { label: "Logs de Auditoria", href: "/audit-logs", icon: ScrollText, pageTitle: "Logs de Auditoria" },
 ];
+
+// Itens que só devem aparecer no menu para usuários com role "Admin".
+// Basta adicionar o href aqui — não precisa mexer em mais nada.
+const ADMIN_ONLY_HREFS = ["/audit-logs"];
 
 function Sidebar() {
     const pathname = usePathname();
@@ -44,6 +50,13 @@ function Sidebar() {
     const displayName = name || user?.email?.split("@")[0] || "Usuário";
     const initial = displayName.charAt(0).toUpperCase();
     const currentItem = NAV_ITEMS.find((item) => item.href === pathname);
+
+    // Esconde itens admin-only enquanto o role ainda não carregou ou para
+    // quem não é Admin. Recalcula só quando o role muda.
+    const visibleNavItems = useMemo(
+        () => NAV_ITEMS.filter((item) => !ADMIN_ONLY_HREFS.includes(item.href) || role === "Admin"),
+        [role]
+    );
 
     const closeMobile = () => setMobileOpen(false);
 
@@ -106,7 +119,7 @@ function Sidebar() {
                         </div>
 
                         <nav className="sidebar-scroll flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-1">
-                            {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+                            {visibleNavItems.map(({ label, href, icon: Icon }) => {
                                 const active = pathname === href;
                                 return (
                                     <Link
@@ -173,7 +186,7 @@ function Sidebar() {
                     </div>
 
                     <nav className="sidebar-scroll flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3">
-                        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+                        {visibleNavItems.map(({ label, href, icon: Icon }) => {
                             const active = pathname === href;
                             return (
                                 <Link

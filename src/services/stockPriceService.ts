@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { StockPriceRecord } from "@/lib/parseStockPriceFile";
+import { logAudit } from "@/services/auditLogService";
 
 const STOCK_IMPORTS_TABLE = "stock_imports";
 const STOCK_ITEMS_TABLE = "stock_snapshot_items";
@@ -250,6 +251,15 @@ export async function saveStockAndPriceSnapshot(params: {
 
     if (statusError || !finalRow) throw statusError || new Error("Falha ao finalizar importação.");
 
+    await logAudit({
+      action: "upload",
+      entityType: "stock_price_import",
+      entityId: importRow.id,
+      entityLabel: fileName,
+      description: `Importação de estoque/preços: ${records.length} produto(s), ${priceChangesCount} preço(s) alterado(s).`,
+      userName: uploadedBy,
+    });
+
     return fromStockImportRow(finalRow);
   } catch (err) {
     await supabase.from(STOCK_IMPORTS_TABLE).update({ status: "Erro" }).eq("id", importRow.id);
@@ -406,4 +416,11 @@ export async function deleteStockImport(id: string) {
     console.error("Erro ao excluir importação:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "delete",
+    entityType: "stock_price_import",
+    entityId: id,
+    description: `Importação de estoque/preços removida (id ${id}).`,
+  });
 }

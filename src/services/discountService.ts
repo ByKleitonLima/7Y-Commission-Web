@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logAudit } from "@/services/auditLogService";
 
 const TABLE = "seller_discounts";
 
@@ -69,6 +70,19 @@ export async function createManualDiscount(input: {
     throw error;
   }
 
+  await logAudit({
+    action: "create",
+    entityType: "discount",
+    entityId: data.id,
+    entityLabel: input.sellerName,
+    description: `Desconto manual de ${input.amount.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })} lançado para "${input.sellerName}".`,
+    changes: { after: input },
+    userName: input.createdBy,
+  });
+
   return fromDbRow(data);
 }
 
@@ -98,6 +112,18 @@ export async function updateManualDiscount(
     console.error("Erro ao atualizar desconto manual:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "update",
+    entityType: "discount",
+    entityId: id,
+    entityLabel: input.sellerName,
+    description: `Desconto manual de "${input.sellerName}" atualizado para ${input.amount.toLocaleString(
+      "pt-BR",
+      { style: "currency", currency: "BRL" }
+    )}.`,
+    changes: { after: input },
+  });
 }
 
 export async function deleteManualDiscount(id: string): Promise<void> {
@@ -106,4 +132,11 @@ export async function deleteManualDiscount(id: string): Promise<void> {
     console.error("Erro ao remover desconto manual:", error);
     throw error;
   }
+
+  await logAudit({
+    action: "delete",
+    entityType: "discount",
+    entityId: id,
+    description: `Desconto manual removido (id ${id}).`,
+  });
 }
