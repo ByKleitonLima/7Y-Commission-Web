@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
     ResponsiveContainer,
     ComposedChart,
@@ -14,6 +14,7 @@ import {
     LabelList,
 } from "recharts";
 import type { DailyTotal } from "@/lib/salesAggregations";
+import MobileDailyRangeFilter, { useIsMobile } from "@/components/mobileDailyRangeFilter";
 
 interface DailySalesChartProps {
     title: string;
@@ -52,11 +53,34 @@ function CustomTooltip({ active, payload, label }: any) {
 
 // Memoizado: só recalcula quando `data` (referência) muda de verdade.
 function DailySalesChart({ title, data }: DailySalesChartProps) {
-    const hasData = data.some((d) => d.revenue > 0 || d.fardos > 0);
+    const isMobile = useIsMobile();
+
+    // Filtro de período — só é exibido/aplicado no mobile (componente
+    // MobileDailyRangeFilter). No desktop o gráfico sempre mostra o
+    // range completo recebido via props (comportamento original,
+    // controlado pelo DateRangeFilter lá em cima da tela do Dashboard).
+    const [mobileRangeDays, setMobileRangeDays] = useState(7);
+
+    // Sempre que a tela deixa de ser mobile, volta o filtro pro padrão
+    // de 7 dias — evita que, ao voltar pro mobile depois, o gráfico
+    // continue "bugado" mostrando todo o período sem o usuário perceber.
+    useEffect(() => {
+        if (!isMobile) setMobileRangeDays(7);
+    }, [isMobile]);
+
+    const displayData = useMemo(() => {
+        if (!isMobile || mobileRangeDays === 0) return data;
+        return data.slice(-mobileRangeDays);
+    }, [data, isMobile, mobileRangeDays]);
+
+    const hasData = displayData.some((d) => d.revenue > 0 || d.fardos > 0);
 
     return (
         <div className="mt-8 min-w-0">
-            <h2 className="border-b border-gray-200 pb-2 text-base font-semibold text-[#2d2d2d]">{title}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
+                <h2 className="text-base font-semibold text-[#2d2d2d]">{title}</h2>
+                <MobileDailyRangeFilter value={mobileRangeDays} onChange={setMobileRangeDays} />
+            </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6">
                 {!hasData ? (
@@ -66,7 +90,10 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                 ) : (
                     <div className="h-[380px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={data} margin={{ top: 24, right: 20, left: 0, bottom: 0 }}>
+                            <ComposedChart
+                                data={displayData}
+                                margin={{ top: 24, right: 20, left: 0, bottom: isMobile ? 20 : 0 }}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                 <XAxis
                                     dataKey="day"
@@ -74,12 +101,16 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                                     axisLine={false}
                                     tickLine={false}
                                     interval="preserveStartEnd"
+                                    angle={isMobile ? -45 : 0}
+                                    textAnchor={isMobile ? "end" : "middle"}
+                                    height={isMobile ? 40 : 30}
                                 />
                                 <YAxis
                                     yAxisId="fardos"
                                     tick={{ fontSize: 11, fill: "#6b7280" }}
                                     axisLine={false}
                                     tickLine={false}
+                                    width={isMobile ? 28 : 60}
                                 />
                                 <YAxis
                                     yAxisId="revenue"
@@ -88,6 +119,7 @@ function DailySalesChart({ title, data }: DailySalesChartProps) {
                                     tick={{ fontSize: 11, fill: "#6b7280" }}
                                     axisLine={false}
                                     tickLine={false}
+                                    width={isMobile ? 46 : 60}
                                 />
                                 <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9f9f9" }} isAnimationActive={false} />
                                 <Legend wrapperStyle={{ fontSize: 12 }} />
