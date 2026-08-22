@@ -56,14 +56,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const token = await firebaseUser.getIdToken();
                 setSessionCookie(token);
 
+                // Força a leitura dos claims do token para verificar se é Admin
+                const tokenResult = await firebaseUser.getIdTokenResult();
+                const isAdminClaim = tokenResult.claims.admin === true;
+
                 try {
                     const snapshot = await getDoc(doc(db, "users", firebaseUser.uid));
                     const data = snapshot.exists() ? snapshot.data() : null;
+
                     setName(data?.name ?? firebaseUser.email?.split("@")[0] ?? "Usuário");
-                    setRole(data?.role ?? "Usuário");
+
+                    // Se for admin pelo token, define como "Admin", senão pega do Firestore ou "Usuário"
+                    if (isAdminClaim) {
+                        setRole("Admin");
+                    } else {
+                        setRole(data?.role ?? "Usuário");
+                    }
                 } catch {
                     setName(firebaseUser.email?.split("@")[0] ?? "Usuário");
-                    setRole("Usuário");
+                    setRole(isAdminClaim ? "Admin" : "Usuário");
                 }
             } else {
                 setSessionCookie(null);
